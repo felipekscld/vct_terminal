@@ -1,6 +1,20 @@
 """Edge calculator: compare p_model vs p_impl from bookmaker odds.
 
 All analysis respects the active DataFilter.
+
+Market key format (for matching odds to model):
+  market_type|mapN?|selection
+  - market_type: e.g. map1_winner, map1_ot, correct_score, over_3.5_maps
+  - mapN: optional, for per-map markets (map1, map2, ...)
+  - selection: e.g. team name/tag for map winner, "yes"/"no" for OT, score string for correct_score
+
+Adding new markets (when Openclaw or a house starts recording a new market_type/selection):
+  1. If the market has a model-derived probability: in build_market_probs() add the logic to
+     produce the key and p_model (using map_analyses, series_result, or ot_results as needed).
+  2. Add the market_type to ALL_MARKET_TYPES and MARKET_LABELS in src/config.py if it should
+     appear in UI/config.
+  3. Markets without model support can still be stored in odds_snapshots; they will show edges
+     once the corresponding key and p_model are added in build_market_probs.
 """
 
 from __future__ import annotations
@@ -45,9 +59,11 @@ def calculate_edge(
     p_impl = 1.0 / odds if odds > 0 else 0.0
     edge = p_model - p_impl
 
-    if edge >= config.edge.strong_edge and confidence != "low":
+    strong_ok = config.edge.min_sample_for_strong is None or sample_size >= config.edge.min_sample_for_strong
+    observe_ok = config.edge.min_sample_for_observe is None or sample_size >= config.edge.min_sample_for_observe
+    if edge >= config.edge.strong_edge and confidence != "low" and strong_ok:
         recommendation = "EDGE FORTE"
-    elif edge >= config.edge.min_edge and confidence != "low":
+    elif edge >= config.edge.min_edge and confidence != "low" and observe_ok:
         recommendation = "OBSERVAR"
     else:
         recommendation = "SEM EDGE"
@@ -132,7 +148,7 @@ def analyze_market_edges(
 
 
 def _build_market_key(market_type: str, selection: str, map_number: int | None) -> str:
-    """Normalize a market key for lookup."""
+    """Normalize a market key for lookup. Format: market_type|mapN?|selection (e.g. map1_winner|map1|nrg)."""
     parts = [market_type.lower()]
     if map_number:
         parts.append(f"map{map_number}")
@@ -144,30 +160,53 @@ def build_market_probs(
     map_analyses: list,
     series_result: dict | None = None,
     ot_results: list[dict] | None = None,
+    team_a_aliases: list[str] | None = None,
+    team_b_aliases: list[str] | None = None,
 ) -> dict[str, dict]:
     """Build the market_probs dict from analysis results for use with analyze_market_edges.
 
     Returns a dict mapping market_key -> {p_model, confidence, sample_size, map_number}.
+    When team_a_aliases/team_b_aliases are provided (e.g. [name, tag]), each normalized
+    alias gets the same prob entry so odds with selection "NRG" or "Sentinels" can match.
     """
     probs: dict[str, dict] = {}
 
     for i, ma in enumerate(map_analyses):
         map_num = ma.map_order or (i + 1)
+        team_a_name = (ma.team_a_stats.team_name if ma.team_a_stats else "team_a").strip().lower()
+        team_b_name = (ma.team_b_stats.team_name if ma.team_b_stats else "team_b").strip().lower()
 
-        team_a_key = f"map{map_num}_winner|map{map_num}|{(ma.team_a_stats.team_name if ma.team_a_stats else 'team_a').lower()}"
-        team_b_key = f"map{map_num}_winner|map{map_num}|{(ma.team_b_stats.team_name if ma.team_b_stats else 'team_b').lower()}"
-        probs[team_a_key] = {
+        team_a_norm = [team_a_name]
+        if team_a_aliases:
+            for a in team_a_aliases:
+                if a and a.strip():
+                    n = a.strip().lower()
+                    if n not in team_a_norm:
+                        team_a_norm.append(n)
+        team_b_norm = [team_b_name]
+        if team_b_aliases:
+            for b in team_b_aliases:
+                if b and b.strip():
+                    n = b.strip().lower()
+                    if n not in team_b_norm:
+                        team_b_norm.append(n)
+
+        val_a = {
             "p_model": ma.p_team_a_win,
             "confidence": ma.confidence,
             "sample_size": ma.sample_size,
             "map_number": map_num,
         }
-        probs[team_b_key] = {
+        val_b = {
             "p_model": round(1 - ma.p_team_a_win, 4),
             "confidence": ma.confidence,
             "sample_size": ma.sample_size,
             "map_number": map_num,
         }
+        for sel in team_a_norm:
+            probs[f"map{map_num}_winner|map{map_num}|{sel}"] = val_a
+        for sel in team_b_norm:
+            probs[f"map{map_num}_winner|map{map_num}|{sel}"] = val_b
 
     if ot_results:
         for i, ot in enumerate(ot_results):

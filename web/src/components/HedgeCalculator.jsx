@@ -21,8 +21,8 @@ function HedgeCalculator() {
   return (
     <section className="panel p-4">
       <h3 className="font-display text-base font-semibold">Hedge Calculator</h3>
-      <p className="mt-1 text-sm text-slate-400">
-        Calcula quanto apostar na odd contrária (hedge) para garantir lucro em qualquer resultado. Informe o valor já apostado, a odd da aposta original e a odd do hedge; o resultado mostra quanto apostar no hedge e o lucro garantido.
+      <p className="mt-1 text-sm text-slate-500">
+        Quanto apostar no resultado oposto para travar lucro em qualquer desfecho. Entrada: valor apostado, odd original, odd do hedge. Saída: valor do hedge e lucro garantido.
       </p>
       <div className="mt-2 grid gap-2 md:grid-cols-3">
         <input className="input-box rounded border border-slate-300 bg-slate-900/80 p-2 text-sm text-slate-200 placeholder:text-slate-500" value={stake} onChange={(e) => setStake(e.target.value)} placeholder="Stake original" />

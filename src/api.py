@@ -10,7 +10,7 @@ import re
 import shutil
 import time
 from dataclasses import asdict, is_dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query
@@ -36,6 +36,7 @@ from src.collectors.odds_collector import collect_odds_clawdbot, get_match_descr
 from src.collectors.vlr_collector import full_sync
 from src.config import ALL_MARKET_TYPES, MARKET_LABELS, VALORANT_MAP_POOL, config, DataFilter
 from src.db.connection import get_db
+from src.db.outcomes import register_match_outcome
 from src.db.schema import init_db
 
 
@@ -362,6 +363,13 @@ def list_matches(
         d = dict(r)
         d["team1_tag"] = _team_display_tag(d.get("team1_name"), d.get("team1_tag"))
         d["team2_tag"] = _team_display_tag(d.get("team2_name"), d.get("team2_tag"))
+        # Show as upcoming if stored as completed but has no result or TBD date
+        if d.get("status") == "completed":
+            no_scores = d.get("score1") is None and d.get("score2") is None
+            date_val = d.get("date") or ""
+            tbd_date = str(date_val).upper() in ("TBD", "TBA") or not date_val
+            if no_scores or tbd_date:
+                d["status"] = "upcoming"
         items.append(d)
     return {"items": items}
 
@@ -390,12 +398,57 @@ def match_detail(match_id: int) -> dict[str, Any]:
         _enrich_veto_with_start_side(match_id, veto_list, conn=conn)
         veto_markdown = _veto_to_markdown(veto_list) if veto_list else ""
 
+    map_results = _get_match_map_results(match_id)
     return {
         "match": info,
         "veto": veto_list,
         "veto_markdown": veto_markdown,
         "odds_count": odds_count,
+        "map_results": map_results,
     }
+
+
+def _get_match_map_results(match_id: int) -> list[dict[str, Any]]:
+    """Return played map results (map name, rounds per team, winner) for analysis. Uses maps table first, then live_map_results."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT map_order, map_name, team1_score, team2_score, winner_team_id
+               FROM maps
+               WHERE match_id = ? AND team1_score IS NOT NULL AND team2_score IS NOT NULL
+               ORDER BY map_order""",
+            (match_id,),
+        ).fetchall()
+    if rows:
+        return [
+            {
+                "map_order": r["map_order"],
+                "map_name": r["map_name"] or f"Map {r['map_order']}",
+                "team1_score": r["team1_score"],
+                "team2_score": r["team2_score"],
+                "winner_team_id": r["winner_team_id"],
+            }
+            for r in rows
+        ]
+    with get_db() as conn:
+        live = conn.execute(
+            """SELECT map_number, map_name, winner_team_id, score_a, score_b
+               FROM live_map_results
+               WHERE match_id = ?
+               ORDER BY map_number""",
+            (match_id,),
+        ).fetchall()
+    if not live:
+        return []
+    return [
+        {
+            "map_order": r["map_number"],
+            "map_name": r["map_name"] or f"Map {r['map_number']}",
+            "team1_score": r["score_a"],
+            "team2_score": r["score_b"],
+            "winner_team_id": r["winner_team_id"],
+        }
+        for r in live
+    ]
 
 
 @app.get("/api/matches/{match_id}/analysis")
@@ -504,8 +557,14 @@ def _get_match_edges_for_cross_parlay(match_id: int) -> tuple[str | None, list[d
         map_probs_a.append(ma.p_team_a_win)
 
     maps_to_win = 3 if "5" in str(bo_type).lower() else 2
-    series_result = simulate_series(map_probs_a, maps_to_win=maps_to_win)
-    market_probs = build_market_probs(map_analyses, series_result, ot_results)
+    series_result = simulate_series(map_probs_a, maps_to_win=maps_to_win, seed=match_id)
+    team_a_aliases = [x for x in [info.get("team1_name"), info.get("team1_tag")] if x]
+    team_b_aliases = [x for x in [info.get("team2_name"), info.get("team2_tag")] if x]
+    market_probs = build_market_probs(
+        map_analyses, series_result, ot_results,
+        team_a_aliases=team_a_aliases or None,
+        team_b_aliases=team_b_aliases or None,
+    )
     single_edges = analyze_market_edges(match_id, market_probs)
 
     positive = []
@@ -710,6 +769,15 @@ def live_series_prob(match_id: int) -> dict[str, Any]:
     return _calculate_live_series_prob(match_id)
 
 
+@app.post("/api/matches/{match_id}/register-outcome")
+def register_outcome(match_id: int) -> dict[str, Any]:
+    """Register match outcome (score + map results) for tracking/backtest. No-op if already registered or match not completed."""
+    if not _match_exists(match_id):
+        raise HTTPException(status_code=404, detail=f"Match {match_id} not found")
+    inserted = register_match_outcome(match_id)
+    return {"registered": inserted}
+
+
 @app.get("/api/stats/team/{team_id}")
 def team_stats(team_id: int, map_name: str | None = None) -> dict[str, Any]:
     with get_db() as conn:
@@ -723,6 +791,8 @@ def team_stats(team_id: int, map_name: str | None = None) -> dict[str, Any]:
     for mn in maps:
         stats = get_team_map_stats(team_id, mn, data_filter=all_data)
         d = asdict(stats)
+        d["pistol_atk_pct"] = (d["pistol_atk_won"] / d["pistol_atk_played"]) if d.get("pistol_atk_played") else 0.0
+        d["pistol_def_pct"] = (d["pistol_def_won"] / d["pistol_def_played"]) if d.get("pistol_def_played") else 0.0
         if d["games_played"] > 0 or map_name:
             likely_comps = get_team_likely_comp(team_id, mn, data_filter=all_data, limit=2)
             d["likely_compositions"] = likely_comps
@@ -1036,10 +1106,126 @@ def _serialize(value: Any) -> Any:
     return value
 
 
+def _get_team_recent_matches(
+    team_id: int,
+    limit: int = 15,
+    data_filter: DataFilter | None = None,
+) -> list[dict[str, Any]]:
+    """Recent completed matches for a team (from team's perspective). Uses same filter as analysis."""
+    filt = data_filter if data_filter is not None else config.data_filter
+    conditions = [
+        "(m.team1_id = ? OR m.team2_id = ?)",
+        "m.status = ?",
+        "m.score1 IS NOT NULL",
+        "m.score2 IS NOT NULL",
+    ]
+    params: list[Any] = [team_id, team_id, "completed"]
+    filter_conds, filter_params = filt.build_sql_conditions("m")
+    conditions.extend(filter_conds)
+    params.extend(filter_params)
+    params.append(limit)
+    where = " AND ".join(conditions)
+
+    with get_db() as conn:
+        rows = conn.execute(
+            f"""SELECT m.id AS match_id, m.date, m.score1, m.score2,
+                       m.team1_id, m.team2_id,
+                       e.name AS event_name,
+                       t1.tag AS t1_tag, t1.name AS t1_name,
+                       t2.tag AS t2_tag, t2.name AS t2_name
+                FROM matches m
+                LEFT JOIN events e ON m.event_id = e.id
+                LEFT JOIN teams t1 ON m.team1_id = t1.id
+                LEFT JOIN teams t2 ON m.team2_id = t2.id
+                WHERE {where}
+                ORDER BY m.date DESC
+                LIMIT ?""",
+            params,
+        ).fetchall()
+
+    result = []
+    for r in rows:
+        if r["team1_id"] == team_id:
+            team_score, opp_score = r["score1"], r["score2"]
+            opp_tag = r["t2_tag"] or r["t2_name"] or "?"
+            opp_name = r["t2_name"] or "?"
+        else:
+            team_score, opp_score = r["score2"], r["score1"]
+            opp_tag = r["t1_tag"] or r["t1_name"] or "?"
+            opp_name = r["t1_name"] or "?"
+        try:
+            ts, os = int(team_score or 0), int(opp_score or 0)
+            won = ts > os
+        except (TypeError, ValueError):
+            won = False
+        result.append({
+            "match_id": r["match_id"],
+            "date": r["date"],
+            "event_name": r["event_name"] or "",
+            "opponent_tag": opp_tag,
+            "opponent_name": opp_name,
+            "team_score": team_score,
+            "opponent_score": opp_score,
+            "won": won,
+        })
+    return result
+
+
+def _analysis_filter(
+    match_date: str | None = None,
+    match_event_id: int | None = None,
+    match_stage_name: str | None = None,
+    match_status: str | None = None,
+) -> DataFilter:
+    """Filter for match analysis. Uses current year for upcoming matches; for past matches
+    includes the match's year and event (and stage if set) so we have historical stats
+    (avoids 50%%-50%% when user filter would exclude the match's event)."""
+    today_str = date.today().isoformat()
+    current_year = date.today().year
+    existing_from = config.data_filter.date_from
+    event_ids = list(config.data_filter.event_ids)
+    stage_names = list(config.data_filter.stage_names)
+    is_past = (match_date and match_date < today_str) or (match_status == "completed")
+
+    if is_past:
+        try:
+            match_year = int((match_date or "")[:4]) if match_date else current_year
+            min_date = f"{match_year}-01-01"
+        except (ValueError, TypeError):
+            min_date = f"{current_year}-01-01"
+        # Past match: use at least match year; allow user date_from only if it gives more history
+        analysis_date_from = min_date if (existing_from is None or existing_from >= min_date) else existing_from
+        # If user filtered by events, ensure match's event is included (so we don't get 0 stats)
+        if event_ids and match_event_id is not None and match_event_id not in event_ids:
+            event_ids = event_ids + [match_event_id]
+        if stage_names and match_stage_name and match_stage_name not in stage_names:
+            stage_names = stage_names + [match_stage_name]
+    else:
+        min_date = f"{current_year}-01-01"
+        if existing_from is None or existing_from < min_date:
+            analysis_date_from = min_date
+        else:
+            analysis_date_from = existing_from
+
+    return DataFilter(
+        event_ids=event_ids,
+        stage_names=stage_names,
+        date_from=analysis_date_from,
+        date_to=config.data_filter.date_to,
+    )
+
+
 def _build_match_analysis(match_id: int) -> dict[str, Any]:
     info = _get_match_info(match_id)
     if not info:
         raise HTTPException(status_code=404, detail=f"Match {match_id} not found")
+
+    analysis_filt = _analysis_filter(
+        match_date=info.get("date"),
+        match_event_id=info.get("event_id"),
+        match_stage_name=info.get("stage_name"),
+        match_status=info.get("status"),
+    )
 
     team_a_id = info["team1_id"]
     team_b_id = info["team2_id"]
@@ -1071,7 +1257,7 @@ def _build_match_analysis(match_id: int) -> dict[str, Any]:
             team_b_id,
             map_name,
             starting_side_a=m.get("start_side"),
-            data_filter=config.data_filter,
+            data_filter=analysis_filt,
             bo_type=bo_type,
         )
         ma.map_order = m["map_order"]
@@ -1081,7 +1267,7 @@ def _build_match_analysis(match_id: int) -> dict[str, Any]:
             team_a_id,
             team_b_id,
             map_name,
-            data_filter=config.data_filter,
+            data_filter=analysis_filt,
             bo_type=bo_type,
         )
         ma.p_ot = ot["p_ot"]
@@ -1091,9 +1277,15 @@ def _build_match_analysis(match_id: int) -> dict[str, Any]:
         map_probs_a.append(ma.p_team_a_win)
 
     maps_to_win = 3 if "5" in str(bo_type).lower() else 2
-    series_result = simulate_series(map_probs_a, maps_to_win=maps_to_win)
+    series_result = simulate_series(map_probs_a, maps_to_win=maps_to_win, seed=match_id)
 
-    market_probs = build_market_probs(map_analyses, series_result, ot_results)
+    team_a_aliases = [x for x in [info.get("team1_name"), info.get("team1_tag")] if x]
+    team_b_aliases = [x for x in [info.get("team2_name"), info.get("team2_tag")] if x]
+    market_probs = build_market_probs(
+        map_analyses, series_result, ot_results,
+        team_a_aliases=team_a_aliases or None,
+        team_b_aliases=team_b_aliases or None,
+    )
     single_edges = analyze_market_edges(match_id, market_probs)
     arbs = detect_arbitrage(match_id)
 
@@ -1131,7 +1323,138 @@ def _build_match_analysis(match_id: int) -> dict[str, Any]:
         if cs:
             multi_bets.append(cs)
 
-    h2h = get_h2h_stats(team_a_id, team_b_id, data_filter=config.data_filter)
+    h2h = get_h2h_stats(team_a_id, team_b_id, data_filter=analysis_filt)
+    recent_a = _get_team_recent_matches(team_a_id, limit=15, data_filter=analysis_filt)
+    recent_b = _get_team_recent_matches(team_b_id, limit=15, data_filter=analysis_filt)
+
+    overall_a = _aggregate_team_stats(team_a_id, None, analysis_filt)
+    overall_b = _aggregate_team_stats(team_b_id, None, analysis_filt)
+    by_map: list[dict[str, Any]] = []
+    for m in map_list:
+        map_name = m["map_name"]
+        sa = get_team_map_stats(
+            team_a_id, map_name, data_filter=analysis_filt, bo_type=bo_type
+        )
+        sb = get_team_map_stats(
+            team_b_id, map_name, data_filter=analysis_filt, bo_type=bo_type
+        )
+        pistol_atk_pct_a = (sa.pistol_atk_won / sa.pistol_atk_played) if sa.pistol_atk_played else 0.0
+        pistol_def_pct_a = (sa.pistol_def_won / sa.pistol_def_played) if sa.pistol_def_played else 0.0
+        pistol_atk_pct_b = (sb.pistol_atk_won / sb.pistol_atk_played) if sb.pistol_atk_played else 0.0
+        pistol_def_pct_b = (sb.pistol_def_won / sb.pistol_def_played) if sb.pistol_def_played else 0.0
+        by_map.append({
+            "map_name": map_name,
+            "team_a": {
+                "winrate": sa.winrate,
+                "ot_rate": sa.ot_rate,
+                "ot_count": sa.ot_count,
+                "pistol_rate": sa.pistol_rate,
+                "pistol_atk_pct": pistol_atk_pct_a,
+                "pistol_def_pct": pistol_def_pct_a,
+                "games_played": sa.games_played,
+                "pistols_won": sa.pistols_won,
+                "pistols_played": sa.pistols_played,
+                "atk_win_pct": sa.atk_round_rate,
+                "def_win_pct": sa.def_round_rate,
+            },
+            "team_b": {
+                "winrate": sb.winrate,
+                "ot_rate": sb.ot_rate,
+                "ot_count": sb.ot_count,
+                "pistol_rate": sb.pistol_rate,
+                "pistol_atk_pct": pistol_atk_pct_b,
+                "pistol_def_pct": pistol_def_pct_b,
+                "games_played": sb.games_played,
+                "pistols_won": sb.pistols_won,
+                "pistols_played": sb.pistols_played,
+                "atk_win_pct": sb.atk_round_rate,
+                "def_win_pct": sb.def_round_rate,
+            },
+        })
+
+    all_maps: list[dict[str, Any]] = []
+    for map_name in VALORANT_MAP_POOL:
+        sa = get_team_map_stats(
+            team_a_id, map_name, data_filter=analysis_filt, bo_type=bo_type
+        )
+        sb = get_team_map_stats(
+            team_b_id, map_name, data_filter=analysis_filt, bo_type=bo_type
+        )
+        ma = estimate_map_win(
+            team_a_id,
+            team_b_id,
+            map_name,
+            data_filter=analysis_filt,
+            bo_type=bo_type,
+        )
+        pistol_atk_pct_a = (sa.pistol_atk_won / sa.pistol_atk_played) if sa.pistol_atk_played else 0.0
+        pistol_def_pct_a = (sa.pistol_def_won / sa.pistol_def_played) if sa.pistol_def_played else 0.0
+        pistol_atk_pct_b = (sb.pistol_atk_won / sb.pistol_atk_played) if sb.pistol_atk_played else 0.0
+        pistol_def_pct_b = (sb.pistol_def_won / sb.pistol_def_played) if sb.pistol_def_played else 0.0
+        all_maps.append({
+            "map_name": map_name,
+            "p_team_a_win": ma.p_team_a_win,
+            "team_a": {
+                "winrate": sa.winrate,
+                "ot_rate": sa.ot_rate,
+                "ot_count": sa.ot_count,
+                "pistol_rate": sa.pistol_rate,
+                "pistol_atk_pct": pistol_atk_pct_a,
+                "pistol_def_pct": pistol_def_pct_a,
+                "games_played": sa.games_played,
+                "pistols_won": sa.pistols_won,
+                "pistols_played": sa.pistols_played,
+                "atk_win_pct": sa.atk_round_rate,
+                "def_win_pct": sa.def_round_rate,
+            },
+            "team_b": {
+                "winrate": sb.winrate,
+                "ot_rate": sb.ot_rate,
+                "ot_count": sb.ot_count,
+                "pistol_rate": sb.pistol_rate,
+                "pistol_atk_pct": pistol_atk_pct_b,
+                "pistol_def_pct": pistol_def_pct_b,
+                "games_played": sb.games_played,
+                "pistols_won": sb.pistols_won,
+                "pistols_played": sb.pistols_played,
+                "atk_win_pct": sb.atk_round_rate,
+                "def_win_pct": sb.def_round_rate,
+            },
+        })
+
+    comparison = {
+        "overall": {
+            "team_a": {
+                "ot_rate": overall_a["ot_rate"],
+                "ot_count": overall_a["ot_count"],
+                "pistol_rate": overall_a["pistol_rate"],
+                "pistol_atk_pct": overall_a.get("pistol_atk_pct", 0.0),
+                "pistol_def_pct": overall_a.get("pistol_def_pct", 0.0),
+                "pistols_won": overall_a["pistols_won"],
+                "pistols_played": overall_a["pistols_played"],
+                "winrate": overall_a["winrate"],
+                "games_played": overall_a["games_played"],
+            },
+            "team_b": {
+                "ot_rate": overall_b["ot_rate"],
+                "ot_count": overall_b["ot_count"],
+                "pistol_rate": overall_b["pistol_rate"],
+                "pistol_atk_pct": overall_b.get("pistol_atk_pct", 0.0),
+                "pistol_def_pct": overall_b.get("pistol_def_pct", 0.0),
+                "pistols_won": overall_b["pistols_won"],
+                "pistols_played": overall_b["pistols_played"],
+                "winrate": overall_b["winrate"],
+                "games_played": overall_b["games_played"],
+            },
+        },
+        "by_map": by_map,
+        "all_maps": all_maps,
+    }
+
+    data_period = {
+        "date_from": analysis_filt.date_from,
+        "description": analysis_filt.description,
+    }
 
     with get_db() as conn:
         odds_count = conn.execute(
@@ -1154,10 +1477,14 @@ def _build_match_analysis(match_id: int) -> dict[str, Any]:
             "description": config.data_filter.description,
             "is_active": config.data_filter.is_active,
         },
+        "data_period": data_period,
         "teams": {
             "team_a": {"id": team_a_id, "name": team_a_name, "tag": team_a_tag},
             "team_b": {"id": team_b_id, "name": team_b_name, "tag": team_b_tag},
         },
+        "recent_matches_team_a": recent_a,
+        "recent_matches_team_b": recent_b,
+        "comparison": comparison,
     }
 
 
@@ -1239,14 +1566,19 @@ def _calculate_live_series_prob(match_id: int) -> dict[str, Any]:
                 info["team1_id"],
                 info["team2_id"],
                 map_name,
-                data_filter=config.data_filter,
+                data_filter=_analysis_filter(
+                    match_date=info.get("date"),
+                    match_event_id=info.get("event_id"),
+                    match_stage_name=info.get("stage_name"),
+                    match_status=info.get("status"),
+                ),
                 bo_type=bo_type,
             )
             remaining_probs.append(ma.p_team_a_win)
         else:
             remaining_probs.append(0.5)
 
-    sim = simulate_series(remaining_probs, maps_to_win=a_needs)
+    sim = simulate_series(remaining_probs, maps_to_win=a_needs, seed=match_id)
 
     return {
         **live_state,
@@ -1484,6 +1816,8 @@ def _aggregate_team_stats(
         avg_atk = sum(s.atk_round_rate * s.games_played for s in stats) / total_games
         avg_def = sum(s.def_round_rate * s.games_played for s in stats) / total_games
 
+    pistol_atk_pct = (total_pistol_atk_won / total_pistol_atk_played) if total_pistol_atk_played else 0.0
+    pistol_def_pct = (total_pistol_def_won / total_pistol_def_played) if total_pistol_def_played else 0.0
     return {
         "games_played": total_games,
         "wins": total_wins,
@@ -1498,6 +1832,8 @@ def _aggregate_team_stats(
         "pistol_def_won": total_pistol_def_won,
         "pistol_atk_played": total_pistol_atk_played,
         "pistol_def_played": total_pistol_def_played,
+        "pistol_atk_pct": pistol_atk_pct,
+        "pistol_def_pct": pistol_def_pct,
         "atk_rate": avg_atk,
         "def_rate": avg_def,
     }

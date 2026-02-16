@@ -9,7 +9,7 @@ function SeriesProbs({ scoreProbs, boType }) {
   return (
     <section className="panel p-4">
       <h3 className="font-display text-base font-semibold text-ink">Probabilidades da série</h3>
-      <p className="mt-0.5 text-xs text-slate-500">Formato: {formatLabel} — placar (time A – time B)</p>
+      <p className="mt-0.5 text-xs text-slate-500">Formato: {formatLabel} — placar (time A – time B). Baseado em estatísticas passadas dos dois times (e confronto direto quando houver).</p>
       <div className="mt-3 h-56 w-full">
         {data.length ? (
           <ResponsiveContainer width="100%" height="100%">

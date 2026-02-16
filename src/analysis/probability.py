@@ -14,6 +14,7 @@ from typing import Optional
 from src.config import config, DataFilter
 from src.analysis.maps import (
     get_team_map_stats,
+    get_team_overall_stats,
     get_h2h_stats,
     get_global_map_stats,
 )
@@ -78,47 +79,83 @@ def estimate_map_win(
     sample = a_stats.games_played + b_stats.games_played
     factors: dict = {"filter": filt.description, "sample_a": a_stats.games_played, "sample_b": b_stats.games_played}
 
-    base_a = _safe_rate(a_stats.wins, a_stats.games_played)
-    base_b = _safe_rate(b_stats.wins, b_stats.games_played)
-    p_base = base_a / (base_a + base_b) if (base_a + base_b) > 0 else 0.5
-    factors["base_winrate"] = round(p_base, 4)
-
-    rd_a = a_stats.avg_round_diff
-    rd_b = b_stats.avg_round_diff
-    diff = rd_a - rd_b
-    p_opp = 1 / (1 + math.exp(-diff / 3.0))
-    factors["opponent_adjusted"] = round(p_opp, 4)
-
-    h2h = get_h2h_stats(team_a_id, team_b_id, map_name=map_name, data_filter=filt, bo_type=bo_type)
-    if h2h["total_maps"] >= 1:
-        p_h2h = _safe_rate(h2h["a_wins"], h2h["total_maps"])
-    else:
-        p_h2h = 0.5
-    factors["h2h"] = round(p_h2h, 4)
-    factors["h2h_maps"] = h2h["total_maps"]
-
-    p_side = 0.5
-    if starting_side_a:
-        if starting_side_a.lower() in ("attacker", "atk"):
-            p_side = 0.5 + (a_stats.atk_round_rate - 0.5) * 0.3
+    if sample == 0:
+        overall_a = get_team_overall_stats(team_a_id, data_filter=filt, bo_type=bo_type)
+        overall_b = get_team_overall_stats(team_b_id, data_filter=filt, bo_type=bo_type)
+        oa_games = overall_a["games_played"]
+        ob_games = overall_b["games_played"]
+        if oa_games > 0 or ob_games > 0:
+            base_a = _safe_rate(overall_a["wins"], oa_games)
+            base_b = _safe_rate(overall_b["wins"], ob_games)
+            p_base = base_a / (base_a + base_b) if (base_a + base_b) > 0 else 0.5
+            diff = overall_a["avg_round_diff"] - overall_b["avg_round_diff"]
+            p_opp = 1 / (1 + math.exp(-diff / 3.0))
+            factors["base_winrate"] = round(p_base, 4)
+            factors["opponent_adjusted"] = round(p_opp, 4)
         else:
-            p_side = 0.5 + (a_stats.def_round_rate - 0.5) * 0.3
-        p_side = max(0.3, min(0.7, p_side))
-    factors["side_advantage"] = round(p_side, 4)
+            p_base = 0.5
+            p_opp = 0.5
+            factors["base_winrate"] = 0.5
+            factors["opponent_adjusted"] = 0.5
+    else:
+        base_a = _safe_rate(a_stats.wins, a_stats.games_played)
+        base_b = _safe_rate(b_stats.wins, b_stats.games_played)
+        p_base = base_a / (base_a + base_b) if (base_a + base_b) > 0 else 0.5
+        factors["base_winrate"] = round(p_base, 4)
+        rd_a = a_stats.avg_round_diff
+        rd_b = b_stats.avg_round_diff
+        diff = rd_a - rd_b
+        p_opp = 1 / (1 + math.exp(-diff / 3.0))
+        factors["opponent_adjusted"] = round(p_opp, 4)
 
-    p_comp = 0.5
-    if comp_a and comp_b:
-        comp_info = get_comp_stats_for_matchup(
-            team_a_id, team_b_id, map_name, comp_a, comp_b, data_filter=filt, bo_type=bo_type
-        )
-        if comp_info.get("has_data"):
-            p_comp = comp_info["p_a_advantage"]
-    factors["comp_factor"] = round(p_comp, 4)
+    use_overall_fallback = sample == 0
+    if use_overall_fallback:
+        p_h2h = 0.5
+        factors["h2h"] = 0.5
+        factors["h2h_maps"] = 0
+    else:
+        h2h = get_h2h_stats(team_a_id, team_b_id, map_name=map_name, data_filter=filt, bo_type=bo_type)
+        if h2h["total_maps"] >= 1:
+            p_h2h = _safe_rate(h2h["a_wins"], h2h["total_maps"])
+        else:
+            p_h2h = 0.5
+        factors["h2h"] = round(p_h2h, 4)
+        factors["h2h_maps"] = h2h["total_maps"]
 
-    pistol_diff = a_stats.pistol_rate - b_stats.pistol_rate
-    p_pistol = 0.5 + pistol_diff * 0.5
-    p_pistol = max(0.3, min(0.7, p_pistol))
-    factors["pistol"] = round(p_pistol, 4)
+    if use_overall_fallback:
+        p_side = 0.5
+        factors["side_advantage"] = 0.5
+    else:
+        p_side = 0.5
+        if starting_side_a:
+            if starting_side_a.lower() in ("attacker", "atk"):
+                p_side = 0.5 + (a_stats.atk_round_rate - 0.5) * 0.3
+            else:
+                p_side = 0.5 + (a_stats.def_round_rate - 0.5) * 0.3
+            p_side = max(0.3, min(0.7, p_side))
+        factors["side_advantage"] = round(p_side, 4)
+
+    if use_overall_fallback:
+        p_comp = 0.5
+        factors["comp_factor"] = 0.5
+    else:
+        p_comp = 0.5
+        if comp_a and comp_b:
+            comp_info = get_comp_stats_for_matchup(
+                team_a_id, team_b_id, map_name, comp_a, comp_b, data_filter=filt, bo_type=bo_type
+            )
+            if comp_info.get("has_data"):
+                p_comp = comp_info["p_a_advantage"]
+        factors["comp_factor"] = round(p_comp, 4)
+
+    if use_overall_fallback:
+        p_pistol = 0.5
+        factors["pistol"] = 0.5
+    else:
+        pistol_diff = a_stats.pistol_rate - b_stats.pistol_rate
+        p_pistol = 0.5 + pistol_diff * 0.5
+        p_pistol = max(0.3, min(0.7, p_pistol))
+        factors["pistol"] = round(p_pistol, 4)
 
     p_recency = p_base
     factors["recency"] = round(p_recency, 4)
@@ -211,50 +248,47 @@ def estimate_ot_prob(
 
 
 
-def simulate_series(
+def exact_series_prob(
     map_probs: list[float],
     maps_to_win: int = 2,
-    n_sims: int | None = None,
 ) -> dict[str, float]:
-    """Monte Carlo simulation of a BO series.
+    """Exact series outcome probabilities (no randomness).
 
-    Args:
-        map_probs: list of P(team_a wins map_i) for each potential map
-                   Length should be >= (2 * maps_to_win - 1)
-        maps_to_win: 2 for BO3, 3 for BO5
-        n_sims: number of simulations (defaults to config)
+    Uses dynamic programming over map order: at each map we know P(A wins map i),
+    and we assume map outcomes are independent. This is the correct probabilistic
+    model for a best-of-n given per-map win probabilities.
 
-    Returns dict with score probabilities like {"2-0": 0.28, "2-1": 0.30, ...}
-    and P(team_a wins series), P(series > N maps), etc.
+    Returns the same shape as simulate_series: score_probs, p_a_series,
+    total_maps_dist, p_over_3.5_maps / p_3_maps.
     """
-    if n_sims is None:
-        n_sims = config.multibet.monte_carlo_sims
-
     max_maps = 2 * maps_to_win - 1
-    while len(map_probs) < max_maps:
-        map_probs.append(map_probs[-1] if map_probs else 0.5)
+    probs = list(map_probs)
+    while len(probs) < max_maps:
+        probs.append(probs[-1] if probs else 0.5)
 
-    score_counts: dict[str, int] = {}
-    a_series_wins = 0
+    score_probs: dict[str, float] = {}
+    state: dict[tuple[int, int], float] = {(0, 0): 1.0}
 
-    for _ in range(n_sims):
-        a_score = 0
-        b_score = 0
-        for i in range(max_maps):
-            if random.random() < map_probs[i]:
-                a_score += 1
+    for i in range(max_maps):
+        p = probs[i]
+        next_state: dict[tuple[int, int], float] = {}
+        for (a, b), prob in state.items():
+            if a >= maps_to_win or b >= maps_to_win:
+                continue
+            if a + 1 == maps_to_win:
+                key = f"{a + 1}-{b}"
+                score_probs[key] = score_probs.get(key, 0.0) + prob * p
             else:
-                b_score += 1
-            if a_score == maps_to_win or b_score == maps_to_win:
-                break
-        key = f"{a_score}-{b_score}"
-        score_counts[key] = score_counts.get(key, 0) + 1
-        if a_score == maps_to_win:
-            a_series_wins += 1
+                next_state[(a + 1, b)] = next_state.get((a + 1, b), 0.0) + prob * p
+            if b + 1 == maps_to_win:
+                key = f"{a}-{b + 1}"
+                score_probs[key] = score_probs.get(key, 0.0) + prob * (1.0 - p)
+            else:
+                next_state[(a, b + 1)] = next_state.get((a, b + 1), 0.0) + prob * (1.0 - p)
+        state = next_state
 
-    score_probs = {k: v / n_sims for k, v in sorted(score_counts.items())}
-    p_a_series = a_series_wins / n_sims
-    total_maps_dist = {}
+    p_a_series = sum(v for k, v in score_probs.items() if int(k.split("-")[0]) == maps_to_win)
+    total_maps_dist: dict[int, float] = {}
     for score_str, prob in score_probs.items():
         parts = score_str.split("-")
         total = int(parts[0]) + int(parts[1])
@@ -263,15 +297,27 @@ def simulate_series(
     result = {
         "p_a_series": round(p_a_series, 4),
         "p_b_series": round(1 - p_a_series, 4),
-        "score_probs": {k: round(v, 4) for k, v in score_probs.items()},
+        "score_probs": {k: round(v, 4) for k, v in sorted(score_probs.items())},
         "total_maps_dist": {k: round(v, 4) for k, v in sorted(total_maps_dist.items())},
     }
-
     if maps_to_win == 3:
         result["p_over_3.5_maps"] = round(
             sum(v for k, v in total_maps_dist.items() if k >= 4), 4
         )
     elif maps_to_win == 2:
         result["p_3_maps"] = round(total_maps_dist.get(3, 0), 4)
-
     return result
+
+
+def simulate_series(
+    map_probs: list[float],
+    maps_to_win: int = 2,
+    n_sims: int | None = None,
+    seed: int | None = None,
+) -> dict[str, float]:
+    """Monte Carlo simulation of a BO series.
+
+    Prefer exact_series_prob() for analysis: it is exact and deterministic.
+    This is kept for compatibility and for cases where you want sampling.
+    """
+    return exact_series_prob(map_probs, maps_to_win=maps_to_win)

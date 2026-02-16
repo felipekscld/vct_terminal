@@ -168,7 +168,7 @@ def _show_live_series_prob(
     else:
         remaining_probs = [0.5] * max_remaining
 
-    series = simulate_series(remaining_probs, maps_to_win=a_needs)
+    series = simulate_series(remaining_probs, maps_to_win=a_needs, seed=match_id)
 
     p_a_wins = series["p_a_series"]
     p_b_wins = 1 - p_a_wins
