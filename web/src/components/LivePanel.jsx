@@ -32,13 +32,13 @@ function LivePanel({ matchId, liveState, onUpdated }) {
       </div>
 
       <div className="grid gap-2 md:grid-cols-5">
-        <input className="rounded border p-2 text-sm" value={mapNumber} onChange={(e) => setMapNumber(e.target.value)} placeholder="Map #" />
-        <select className="rounded border p-2 text-sm" value={winnerSide} onChange={(e) => setWinnerSide(e.target.value)}>
+        <input className="rounded border border-slate-300 p-2 text-sm text-slate-800 placeholder:text-slate-500" value={mapNumber} onChange={(e) => setMapNumber(e.target.value)} placeholder="Map #" />
+        <select className="rounded border border-slate-300 p-2 text-sm text-slate-800" value={winnerSide} onChange={(e) => setWinnerSide(e.target.value)}>
           <option value="a">Time A venceu</option>
           <option value="b">Time B venceu</option>
         </select>
-        <input className="rounded border p-2 text-sm" value={scoreA} onChange={(e) => setScoreA(e.target.value)} placeholder="Score A" />
-        <input className="rounded border p-2 text-sm" value={scoreB} onChange={(e) => setScoreB(e.target.value)} placeholder="Score B" />
+        <input className="rounded border border-slate-300 p-2 text-sm text-slate-800 placeholder:text-slate-500" value={scoreA} onChange={(e) => setScoreA(e.target.value)} placeholder="Score A" />
+        <input className="rounded border border-slate-300 p-2 text-sm text-slate-800 placeholder:text-slate-500" value={scoreB} onChange={(e) => setScoreB(e.target.value)} placeholder="Score B" />
         <button type="button" onClick={submitResult} className="rounded-lg bg-ocean px-3 py-2 text-xs font-semibold text-white">Registrar mapa</button>
       </div>
 

@@ -46,11 +46,15 @@ def sync_events(tier: str = "vct", status: str | None = None, limit_per_status: 
     """Sync VCT events into the database. Returns list of event IDs.
 
     Fetches with region=all so we get Americas, EMEA, Pacific and China (not just one region).
-    If status is None, fetches 'ongoing', 'upcoming' AND 'completed' so you get all campeonatos
-    (incl. os que já concluíram) e todos os times do circuito para Estatísticas por time.
-    Pass status='ongoing' or 'upcoming' to limit to that.
+    If status is None, fetches only 'ongoing' and 'upcoming' (fast, for current/future events).
+    Pass status='all' to include 'completed' (past events). Pass 'ongoing'/'upcoming'/'completed' to limit to one.
     """
-    statuses_to_fetch = [status] if status else ["ongoing", "upcoming", "completed"]
+    if status == "all":
+        statuses_to_fetch = ["ongoing", "upcoming", "completed"]
+    elif status:
+        statuses_to_fetch = [status]
+    else:
+        statuses_to_fetch = ["ongoing", "upcoming"]
     all_events: list = []
     seen_ids: set[int] = set()
 
@@ -133,6 +137,10 @@ def sync_matches(event_id: int, stage: str | None = None) -> list[int]:
 
             date_str = str(m.date) if m.date else None
             time_str = getattr(m, "time", None)
+            status_val = getattr(m, "status", None) or "upcoming"
+            no_scores = (t1.score if t1 else None) is None and (t2.score if t2 else None) is None
+            if no_scores or date_str is None or (date_str and str(date_str).upper() in ("TBD", "TBA")):
+                status_val = "upcoming"
 
             conn.execute(
                 """INSERT OR REPLACE INTO matches
@@ -148,7 +156,7 @@ def sync_matches(event_id: int, stage: str | None = None) -> list[int]:
                     t2.id if t2 else None,
                     t1.score if t1 else None,
                     t2.score if t2 else None,
-                    m.status,
+                    status_val,
                 ),
             )
             match_ids.append(m.match_id)
@@ -207,6 +215,12 @@ def sync_series_detail(match_id: int) -> bool:
             )
 
     console.print(f"  [green]Deep sync complete for match {match_id}.[/green]")
+    try:
+        from src.db.outcomes import register_match_outcome
+        if register_match_outcome(match_id):
+            console.print(f"  [dim]Registered match outcome for {match_id}.[/dim]")
+    except Exception:
+        pass
     return True
 
 

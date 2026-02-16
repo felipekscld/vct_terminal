@@ -133,7 +133,6 @@ function DashboardPage() {
           <button type="button" onClick={runSyncAll} className="rounded-lg bg-slate-600 px-3 py-2 text-xs font-semibold text-white">Incluir eventos passados</button>
           <button type="button" onClick={loadData} className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white">Atualizar lista</button>
         </div>
-        <p className="mt-2 text-xs text-slate-500">A sincronização traz eventos em andamento e futuros (Kickoff, Masters, etc.) com datas do VLR.gg.</p>
       </section>
 
       <section className="grid gap-3 md:grid-cols-3">

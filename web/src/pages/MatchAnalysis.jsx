@@ -8,6 +8,8 @@ import AnalysisPanel from '../components/AnalysisPanel'
 import MultiBetPanel from '../components/MultiBetPanel'
 import SeriesProbs from '../components/SeriesProbs'
 import HedgeCalculator from '../components/HedgeCalculator'
+import ResultadosAnteriores from '../components/TeamRecentResults'
+import ComparisonPanel from '../components/ComparisonPanel'
 
 function MatchAnalysisPage() {
   const { id } = useParams()
@@ -51,7 +53,54 @@ function MatchAnalysisPage() {
         <p className="text-sm text-slate-600">
           {analysis?.match?.event_name || 'Evento'} · {analysis?.match?.stage_name || 'Stage'} · {formatBoType(analysis?.match?.bo_type ?? analysis?.bo_type)}
         </p>
+        {(match?.match?.score1 != null && match?.match?.score2 != null) && (
+          <p className="mt-2 text-lg font-bold text-slate-100">
+            Placar da série: {match.match.score1}–{match.match.score2}
+          </p>
+        )}
       </section>
+
+      {match?.map_results?.length > 0 && (
+        <section className="panel p-4">
+          <h3 className="font-display text-base font-semibold text-ink">Mapas jogados</h3>
+          <div className="mt-3 overflow-x-auto">
+            <table className="min-w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-slate-300">
+                  <th className="py-2 pr-3 text-left text-sm font-semibold text-slate-700">Mapa</th>
+                  <th className="py-2 px-2 text-right text-sm font-semibold text-slate-700">{analysis?.teams?.team_a?.tag || 'Time A'}</th>
+                  <th className="py-2 px-2 text-center text-sm font-semibold text-slate-500">×</th>
+                  <th className="py-2 pl-2 text-left text-sm font-semibold text-slate-700">{analysis?.teams?.team_b?.tag || 'Time B'}</th>
+                  <th className="py-2 pl-3 text-left text-sm font-semibold text-slate-700">Vencedor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {match.map_results.map((row) => {
+                  const teamAId = analysis?.teams?.team_a?.id
+                  const teamBId = analysis?.teams?.team_b?.id
+                  const winnerId = row.winner_team_id
+                  const teamAWon = winnerId === teamAId
+                  const teamBWon = winnerId === teamBId
+                  const winnerTag = teamAWon
+                    ? (analysis?.teams?.team_a?.tag || analysis?.teams?.team_a?.name)
+                    : teamBWon
+                      ? (analysis?.teams?.team_b?.tag || analysis?.teams?.team_b?.name)
+                      : '—'
+                  return (
+                    <tr key={row.map_order} className="border-b border-slate-200 last:border-0 hover:bg-slate-50/50">
+                      <td className="py-2 pr-3 font-semibold text-slate-100">{row.map_name}</td>
+                      <td className={`py-2 px-2 text-right tabular-nums font-semibold ${teamAWon ? 'text-emerald-600' : teamBWon ? 'text-red-600' : 'text-slate-800'}`}>{row.team1_score ?? '—'}</td>
+                      <td className="py-2 px-2 text-center font-semibold text-slate-400">×</td>
+                      <td className={`py-2 pl-2 text-left tabular-nums font-semibold ${teamBWon ? 'text-emerald-600' : teamAWon ? 'text-red-600' : 'text-slate-800'}`}>{row.team2_score ?? '—'}</td>
+                      <td className={`py-2 pl-3 font-semibold ${teamAWon || teamBWon ? 'text-emerald-600' : 'text-slate-700'}`}>{winnerTag}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <VetoInput matchId={matchId} onSaved={loadAll} />
 
@@ -61,6 +110,10 @@ function MatchAnalysisPage() {
         maps={analysis?.maps}
         onSaved={loadAll}
       />
+
+      <ResultadosAnteriores analysis={analysis} />
+
+      <ComparisonPanel analysis={analysis} />
 
       <section className="grid gap-4 lg:grid-cols-2">
         <AnalysisPanel analysis={analysis} />
@@ -88,7 +141,6 @@ function MatchAnalysisPage() {
 
       <section className="panel p-4">
         <h3 className="font-display text-base font-semibold">Veto salvo</h3>
-        <p className="mt-1 text-xs text-slate-500">Formato VLR (copiável). Start side entre parênteses quando conhecido.</p>
         {match?.veto_markdown ? (
           <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100 whitespace-pre-wrap font-mono">
             {match.veto_markdown}

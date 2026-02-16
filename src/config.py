@@ -103,6 +103,8 @@ class EdgeConfig:
     min_confidence: str = "medium"
     min_sample_map: int = 3
     min_sample_general: int = 5
+    min_sample_for_strong: int | None = None
+    min_sample_for_observe: int | None = None
 
 
 @dataclass
@@ -135,6 +137,8 @@ class MultiBetConfig:
     default_spread_stake: float = 10.0
 
 
+# Market types used by odds/edge system. Add new types here and in MARKET_LABELS when Openclaw
+# or a bookmaker introduces a new market; then add key/p_model logic in analysis/edge.build_market_probs.
 ALL_MARKET_TYPES = [
     "map_winner",
     "map_ot",

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from src.config import config, DataFilter
+from src.config import VALORANT_MAP_POOL, config, DataFilter
 from src.db.connection import get_db
 from src.models.data_models import TeamStats
 
@@ -165,6 +165,34 @@ def get_team_map_stats(
         stats.pistol_def_played = stats.games_played
 
     return stats
+
+
+def get_team_overall_stats(
+    team_id: int,
+    data_filter: DataFilter | None = None,
+    bo_type: str | None = None,
+) -> dict:
+    """Aggregate stats for a team across all maps in the pool (same filter and bo_type).
+
+    Used as fallback when per-map stats are empty (e.g. upcoming match, no H2H).
+    Returns dict with wins, games_played, avg_round_diff, team_name.
+    """
+    filt = _resolve_filter(data_filter)
+    stats_list = [get_team_map_stats(team_id, mn, data_filter=filt, bo_type=bo_type) for mn in VALORANT_MAP_POOL]
+    total_games = sum(s.games_played for s in stats_list)
+    total_wins = sum(s.wins for s in stats_list)
+    total_round_diff = sum(s.avg_round_diff * s.games_played for s in stats_list)
+    team_name = ""
+    for s in stats_list:
+        if s.team_name:
+            team_name = s.team_name
+            break
+    return {
+        "wins": total_wins,
+        "games_played": total_games,
+        "avg_round_diff": (total_round_diff / total_games) if total_games else 0.0,
+        "team_name": team_name,
+    }
 
 
 def get_h2h_stats(

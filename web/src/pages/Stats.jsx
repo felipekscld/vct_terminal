@@ -94,10 +94,7 @@ function StatsPage() {
     <div className="space-y-4">
       <section className="panel p-4">
         <h2 className="page-title text-xl font-bold text-ink">Consulta de estatísticas</h2>
-        <p className="text-sm text-slate-600">
-          Use uma consulta em linguagem natural (escolha um exemplo ou digite) ou busque por time e mapa.
-        </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           <label className="text-sm font-medium text-slate-700">Região</label>
           <select
             className="rounded border border-slate-300 p-2 text-sm"
@@ -108,13 +105,11 @@ function StatsPage() {
               <option key={opt.value || 'all'} value={opt.value}>{opt.label}</option>
             ))}
           </select>
-          <span className="text-xs text-slate-500">(reduz a lista de times nos selects abaixo)</span>
         </div>
       </section>
 
       <section className="panel p-4">
         <h3 className="font-display text-base font-semibold text-ink">Siglas dos times (use na consulta)</h3>
-        <p className="mt-1 text-xs text-slate-500">Use a sigla na caixa de consulta (ex: OT C9, winrate SEN). Lista filtrada pela região acima.</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {teams.length === 0 ? (
             <span className="text-sm text-slate-500">Nenhum time (sincronize eventos ou mude a região).</span>
@@ -133,7 +128,6 @@ function StatsPage() {
       <section className="grid gap-4 lg:grid-cols-3">
         <article className="panel p-4">
           <h3 className="font-display text-base font-semibold text-ink">Consulta em linguagem natural</h3>
-          <p className="mt-1 text-xs text-slate-500">Digite ou clique em um exemplo para preencher.</p>
           <textarea
             className="mt-2 h-20 w-full rounded border border-slate-300 p-2 text-sm"
             value={query}
@@ -164,8 +158,7 @@ function StatsPage() {
 
         <article className="panel p-4">
           <h3 className="font-display text-base font-semibold text-ink">Estatísticas por time</h3>
-          <p className="mt-1 text-xs text-slate-500">Selecione o time e, se quiser, o mapa.</p>
-          <div className="mt-3 space-y-2">
+          <div className="mt-2 space-y-2">
             <label className="block text-sm font-medium text-slate-700">Time</label>
             <select
               className="w-full rounded border border-slate-300 p-2 text-sm"
@@ -200,8 +193,7 @@ function StatsPage() {
 
         <article className="panel p-4">
           <h3 className="font-display text-base font-semibold text-ink">Head-to-head (H2H)</h3>
-          <p className="mt-1 text-xs text-slate-500">Selecione os dois times para ver o histórico entre eles.</p>
-          <div className="mt-3 space-y-2">
+          <div className="mt-2 space-y-2">
             <label className="block text-sm font-medium text-slate-700">Time A</label>
             <select
               className="w-full rounded border border-slate-300 p-2 text-sm"

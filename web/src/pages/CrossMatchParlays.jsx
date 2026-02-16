@@ -41,10 +41,7 @@ function CrossMatchParlaysPage() {
     <div className="space-y-4">
       <section className="panel p-4">
         <h2 className="page-title text-xl font-bold text-ink">Parlays entre jogos</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Uma perna por partida. O sistema sugere combinações com boa expectativa a partir das odds coletadas (agente/clawdbot) para partidas futuras.
-        </p>
-        <div className="mt-4 flex flex-wrap items-end gap-3">
+        <div className="mt-3 flex flex-wrap items-end gap-3">
           <div>
             <label className="block text-xs font-semibold uppercase text-slate-500">Data início</label>
             <input

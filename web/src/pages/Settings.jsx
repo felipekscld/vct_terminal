@@ -99,32 +99,26 @@ function SettingsPage({ config: parentConfig, onConfigUpdate }) {
     <div className="space-y-4">
       <section className="panel p-4">
         <h2 className="page-title text-xl font-bold">Configurações</h2>
-        <p className="text-sm text-slate-600">Ajuste seu dinheiro, limites e quando o sistema deve recomendar apostas.</p>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
         <article className="panel p-4">
           <h3 className="font-display text-base font-semibold text-ink">Seu dinheiro e limites</h3>
-          <p className="mt-1 text-xs text-slate-500">Quanto você tem para apostar e até onde pode ir por dia ou por evento.</p>
-          <div className="mt-4 space-y-4">
+          <div className="mt-3 space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700">Caixa total (R$)</label>
-              <p className="text-xs text-slate-500">Quanto você tem disponível para apostas no total.</p>
               <input type="number" step="any" min="0" className="mt-1 w-full rounded border border-slate-300 p-2 text-sm" value={config?.bankroll?.total ?? ''} onChange={(e) => setField('bankroll.total', e.target.value)} placeholder="Ex: 1300" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700">Máximo por aposta (% do caixa)</label>
-              <p className="text-xs text-slate-500">Nenhuma aposta sugerida será maior que isso. Ex: 0,03 = 3% do seu caixa.</p>
               <input type="number" step="0.01" min="0" max="1" className="mt-1 w-full rounded border border-slate-300 p-2 text-sm" value={config?.bankroll?.max_stake_pct ?? ''} onChange={(e) => setField('bankroll.max_stake_pct', e.target.value)} placeholder="Ex: 0.03 (3%)" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700">Limite por dia (R$)</label>
-              <p className="text-xs text-slate-500">Quanto você pode apostar no máximo em um único dia.</p>
               <input type="number" step="any" min="0" className="mt-1 w-full rounded border border-slate-300 p-2 text-sm" value={config?.bankroll?.daily_limit ?? ''} onChange={(e) => setField('bankroll.daily_limit', e.target.value)} placeholder="Ex: 300" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700">Limite por evento (R$)</label>
-              <p className="text-xs text-slate-500">Quanto você pode apostar no máximo em um mesmo campeonato/evento.</p>
               <input type="number" step="any" min="0" className="mt-1 w-full rounded border border-slate-300 p-2 text-sm" value={config?.bankroll?.event_limit ?? ''} onChange={(e) => setField('bankroll.event_limit', e.target.value)} placeholder="Ex: 500" />
             </div>
             <div>
@@ -137,16 +131,13 @@ function SettingsPage({ config: parentConfig, onConfigUpdate }) {
 
         <article className="panel p-4">
           <h3 className="font-display text-base font-semibold text-ink">Quando recomendar apostas</h3>
-          <p className="mt-1 text-xs text-slate-500">O sistema só mostra &quot;Edge forte&quot; ou &quot;Observar&quot; quando a vantagem e a confiança passam desses números.</p>
-          <div className="mt-4 space-y-4">
+          <div className="mt-3 space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700">Edge mínimo para &quot;Observar&quot; (%)</label>
-              <p className="text-xs text-slate-500">Vantagem mínima em decimal. 0,03 = 3%. Abaixo disso o sistema não recomenda.</p>
               <input type="number" step="0.01" min="0" max="1" className="mt-1 w-full rounded border border-slate-300 p-2 text-sm" value={config?.edge?.min_edge ?? ''} onChange={(e) => setField('edge.min_edge', e.target.value)} placeholder="Ex: 0.03 (3%)" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700">Edge para &quot;Edge forte&quot; (%)</label>
-              <p className="text-xs text-slate-500">Vantagem em decimal para marcar como oportunidade forte. 0,08 = 8%.</p>
               <input type="number" step="0.01" min="0" max="1" className="mt-1 w-full rounded border border-slate-300 p-2 text-sm" value={config?.edge?.strong_edge ?? ''} onChange={(e) => setField('edge.strong_edge', e.target.value)} placeholder="Ex: 0.08 (8%)" />
             </div>
             <div>
@@ -174,8 +165,7 @@ function SettingsPage({ config: parentConfig, onConfigUpdate }) {
 
       <section className="panel p-4">
         <h3 className="font-display text-base font-semibold text-ink">Mercados que você usa</h3>
-        <p className="mt-1 text-xs text-slate-500">Marque os mercados que quer ver na análise de edges e recomendações.</p>
-        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
+        <div className="mt-2 flex flex-wrap gap-x-6 gap-y-2">
           {marketOptions.map((m) => {
             const enabled = (config?.markets?.enabled_markets || []).includes(m.id)
             return (
@@ -202,8 +192,7 @@ function SettingsPage({ config: parentConfig, onConfigUpdate }) {
 
       <section className="panel p-4">
         <h3 className="font-display text-base font-semibold text-ink">Apostas ao vivo</h3>
-        <p className="mt-1 text-xs text-slate-500">Betano permite apostar durante o jogo; Bet365 geralmente não. Marque o que você usa.</p>
-        <div className="mt-3 space-y-2">
+        <div className="mt-2 space-y-2">
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(config?.live?.betano_live)} onChange={(e) => setField('live.betano_live', e.target.checked)} /> Considerar odds ao vivo da Betano</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(config?.live?.bet365_live)} onChange={(e) => setField('live.bet365_live', e.target.checked)} /> Considerar odds ao vivo da Bet365</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(config?.live?.show_live_opportunities)} onChange={(e) => setField('live.show_live_opportunities', e.target.checked)} /> Mostrar oportunidades de live no painel</label>

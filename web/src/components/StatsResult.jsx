@@ -12,6 +12,8 @@ const LABELS = {
   pistol_atk_played: 'Round pistols no ataque (jogados)',
   pistol_def_won: 'Round pistols na defesa (ganhos)',
   pistol_def_played: 'Round pistols na defesa (jogados)',
+  pistol_atk_pct: 'Pistol ganho em ataque %',
+  pistol_def_pct: 'Pistol ganho em defesa %',
   atk_rate: 'Lado ataque',
   def_rate: 'Lado defesa',
   atk_round_rate: 'Lado ataque',
@@ -36,7 +38,8 @@ const LABELS = {
 const STAT_KEYS_ORDER = [
   'games_played', 'wins', 'losses', 'winrate', 'ot_count', 'ot_rate',
   'pistols_won', 'pistols_played', 'pistol_rate',
-  'pistol_atk_won', 'pistol_atk_played', 'pistol_def_won', 'pistol_def_played',
+  'pistol_atk_won', 'pistol_atk_played', 'pistol_atk_pct',
+  'pistol_def_won', 'pistol_def_played', 'pistol_def_pct',
   'atk_rate', 'def_rate',
   'atk_round_rate', 'def_round_rate', 'close_maps', 'close_rate'
 ]
@@ -49,7 +52,7 @@ function formatValue(val, key) {
   if (val == null) return '–'
   if (typeof val === 'boolean') return val ? 'Sim' : 'Não'
   if (typeof val === 'number') {
-    if (key === 'pistol_rate' || key === 'pistol_atk_rate' || key === 'pistol_def_rate') return `${Math.round(val * 100)}%`
+    if (key === 'pistol_rate' || key === 'pistol_atk_rate' || key === 'pistol_def_rate' || key === 'pistol_atk_pct' || key === 'pistol_def_pct') return `${Math.round(val * 100)}%`
     if (val <= 1 && val >= 0 && String(val).includes('.')) return `${Math.round(val * 100)}%`
     return Number.isInteger(val) ? String(val) : val.toFixed(2)
   }

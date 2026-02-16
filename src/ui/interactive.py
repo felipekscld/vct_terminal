@@ -300,9 +300,15 @@ def _run_analysis(match_id: int):
         map_probs_a.append(ma.p_team_a_win)
 
     maps_to_win = 3 if "5" in str(bo_type) else 2
-    series_result = simulate_series(map_probs_a, maps_to_win=maps_to_win)
+    series_result = simulate_series(map_probs_a, maps_to_win=maps_to_win, seed=match_id)
 
-    market_probs = build_market_probs(map_analyses, series_result, ot_results)
+    team_a_aliases = [x for x in [info.get("t1_name"), info.get("t1_tag")] if x]
+    team_b_aliases = [x for x in [info.get("t2_name"), info.get("t2_tag")] if x]
+    market_probs = build_market_probs(
+        map_analyses, series_result, ot_results,
+        team_a_aliases=team_a_aliases or None,
+        team_b_aliases=team_b_aliases or None,
+    )
     single_edges = analyze_market_edges(match_id, market_probs)
     arbs = detect_arbitrage(match_id)
 
@@ -668,8 +674,8 @@ def _get_matches_list() -> list[dict]:
 def _get_match_info(match_id: int) -> Optional[dict]:
     with get_db() as conn:
         row = conn.execute(
-            """SELECT m.*, t1.name as t1_name, t1.id as t1_id,
-                      t2.name as t2_name, t2.id as t2_id,
+            """SELECT m.*, t1.name as t1_name, t1.id as t1_id, t1.tag as t1_tag,
+                      t2.name as t2_name, t2.id as t2_id, t2.tag as t2_tag,
                       e.name as event_name
                FROM matches m
                LEFT JOIN teams t1 ON m.team1_id = t1.id

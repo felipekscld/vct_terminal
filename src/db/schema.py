@@ -196,6 +196,14 @@ CREATE TABLE IF NOT EXISTS live_map_results (
     UNIQUE(match_id, map_number)
 );
 
+CREATE TABLE IF NOT EXISTS match_outcomes (
+    match_id        INTEGER PRIMARY KEY REFERENCES matches(id),
+    score1          INTEGER NOT NULL,
+    score2          INTEGER NOT NULL,
+    map_results_json TEXT,
+    created_at      TEXT DEFAULT (datetime('now'))
+);
+
 -- Indexes for frequent queries
 CREATE INDEX IF NOT EXISTS idx_matches_event ON matches(event_id);
 CREATE INDEX IF NOT EXISTS idx_matches_teams ON matches(team1_id, team2_id);
@@ -211,6 +219,7 @@ CREATE INDEX IF NOT EXISTS idx_player_stats_map ON player_map_stats(map_id);
 CREATE INDEX IF NOT EXISTS idx_player_stats_player ON player_map_stats(player_id);
 CREATE INDEX IF NOT EXISTS idx_odds_match ON odds_snapshots(match_id);
 CREATE INDEX IF NOT EXISTS idx_odds_market ON odds_snapshots(market_type);
+CREATE INDEX IF NOT EXISTS idx_odds_match_market_latest ON odds_snapshots(match_id, market_type, selection, bookmaker, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_vetos_match ON pending_vetos(match_id);
 CREATE INDEX IF NOT EXISTS idx_bets_match ON placed_bets(match_id);
 CREATE INDEX IF NOT EXISTS idx_bets_parlay ON placed_bets(parlay_group_id);
