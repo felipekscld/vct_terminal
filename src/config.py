@@ -136,9 +136,6 @@ class MultiBetConfig:
     monte_carlo_sims: int = 10000
     default_spread_stake: float = 10.0
 
-
-# Market types used by odds/edge system. Add new types here and in MARKET_LABELS when Openclaw
-# or a bookmaker introduces a new market; then add key/p_model logic in analysis/edge.build_market_probs.
 ALL_MARKET_TYPES = [
     "map_winner",
     "map_ot",

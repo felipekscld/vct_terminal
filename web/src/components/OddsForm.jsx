@@ -121,10 +121,15 @@ function OddsForm({ matchId, teams, maps, onSaved }) {
     try {
       const res = await api.autoOdds(matchId)
       onSaved?.(res)
+      const warnings = Array.isArray(res?.warnings) ? res.warnings.filter(Boolean) : []
+      if (warnings.length) {
+        setError(warnings.join(' | '))
+      }
     } catch (err) {
-      const fallbackSteps = err?.payload?.fallback_steps
-      const fallbackText = Array.isArray(fallbackSteps) ? ` | Fallback: ${fallbackSteps.join(' | ')}` : ''
-      setError(`${err.message}${fallbackText}`)
+      const warnings = Array.isArray(err?.payload?.warnings) ? err.payload.warnings.filter(Boolean) : []
+      const warningText = warnings.length ? ` | ${warnings.join(' | ')}` : ''
+      setError(`${err.message}${warningText}`)
+      onSaved?.(err?.payload)
     } finally {
       setBusy(false)
     }

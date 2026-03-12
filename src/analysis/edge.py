@@ -8,7 +8,7 @@ Market key format (for matching odds to model):
   - mapN: optional, for per-map markets (map1, map2, ...)
   - selection: e.g. team name/tag for map winner, "yes"/"no" for OT, score string for correct_score
 
-Adding new markets (when Openclaw or a house starts recording a new market_type/selection):
+Adding new markets (when a house starts recording a new market_type/selection):
   1. If the market has a model-derived probability: in build_market_probs() add the logic to
      produce the key and p_model (using map_analyses, series_result, or ot_results as needed).
   2. Add the market_type to ALL_MARKET_TYPES and MARKET_LABELS in src/config.py if it should
