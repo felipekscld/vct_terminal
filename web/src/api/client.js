@@ -77,7 +77,7 @@ export const api = {
   saveVeto: (matchId, body) => request(`/api/matches/${matchId}/veto`, { method: 'POST', body: JSON.stringify(body) }),
   saveOdds: (matchId, body) => request(`/api/matches/${matchId}/odds`, { method: 'POST', body: JSON.stringify(body) }),
   getOdds: (matchId, latestOnly = true) => request(`/api/matches/${matchId}/odds?latest_only=${latestOnly}`),
-  autoOdds: (matchId, force = false) => request(`/api/matches/${matchId}/odds/auto`, { method: 'POST', body: JSON.stringify({ force }) }),
+  autoOdds: (matchId) => request(`/api/matches/${matchId}/odds/auto`, { method: 'POST' }),
   getTeamStats: (teamId, mapName) => request(`/api/stats/team/${teamId}${mapName ? `?map_name=${encodeURIComponent(mapName)}` : ''}`),
   statsQuery: (q) => request(`/api/stats/query?q=${encodeURIComponent(q)}`),
   statsH2h: (a, b, mapName) => {

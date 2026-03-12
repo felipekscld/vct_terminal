@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import time
 from dataclasses import asdict, is_dataclass
 from datetime import date, datetime
@@ -32,7 +31,7 @@ from src.analysis.multibets import (
 )
 from src.analysis.probability import estimate_map_win, estimate_ot_prob, simulate_series
 from src.collectors.manual_input import parse_veto_string
-from src.collectors.odds_collector import collect_odds_clawdbot, get_match_description
+from src.collectors.odds_collector import collect_odds_from_sites
 from src.collectors.vlr_collector import full_sync
 from src.config import ALL_MARKET_TYPES, MARKET_LABELS, VALORANT_MAP_POOL, config, DataFilter
 from src.db.connection import get_db
@@ -73,10 +72,6 @@ class OddsEntryIn(BaseModel):
 
 class OddsBatchRequest(BaseModel):
     entries: list[OddsEntryIn] = Field(default_factory=list)
-
-
-class OddsAutoRequest(BaseModel):
-    force: bool = False
 
 
 class LiveMapResultRequest(BaseModel):
@@ -363,7 +358,6 @@ def list_matches(
         d = dict(r)
         d["team1_tag"] = _team_display_tag(d.get("team1_name"), d.get("team1_tag"))
         d["team2_tag"] = _team_display_tag(d.get("team2_name"), d.get("team2_tag"))
-        # Show as upcoming if stored as completed but has no result or TBD date
         if d.get("status") == "completed":
             no_scores = d.get("score1") is None and d.get("score2") is None
             date_val = d.get("date") or ""
@@ -680,43 +674,50 @@ def get_odds(
 
 
 @app.post("/api/matches/{match_id}/odds/auto")
-def auto_odds(match_id: int, payload: OddsAutoRequest | None = None):
+def auto_odds(match_id: int):
     if not _match_exists(match_id):
         raise HTTPException(status_code=404, detail=f"Match {match_id} not found")
 
-    force = payload.force if payload else False
-
-    if not shutil.which("openclaw"):
-        raise HTTPException(
-            status_code=503,
-            detail="openclaw command is not installed or not in PATH. Use POST /api/matches/{id}/odds with manual entries or batch paste in the web Odds Form.",
-        )
-
-    desc = get_match_description(match_id) or f"Match {match_id}"
     start = time.perf_counter()
-
-    inserted = collect_odds_clawdbot(match_id, desc)
+    result = collect_odds_from_sites(match_id)
     duration_ms = round((time.perf_counter() - start) * 1000, 2)
+    inserted = int(result.get("inserted", 0) or 0)
+    bookmakers = result.get("bookmakers", {})
+    sources = set()
+    for data in bookmakers.values():
+        if isinstance(data, dict):
+            src = data.get("source")
+            if isinstance(src, str) and src:
+                sources.add(src)
+    source = "betano_scraping" if "betano_scraping" in sources else "web_scraping"
+    warnings = []
+    for bookmaker, data in bookmakers.items():
+        error = data.get("error") if isinstance(data, dict) else None
+        if error:
+            warnings.append(f"Nao foi possivel tirar odds da {bookmaker}: {error}")
 
-    if inserted <= 0 and not force:
+    response_payload = {
+        "inserted": inserted,
+        "source": source,
+        "duration_ms": duration_ms,
+        "bookmakers": bookmakers,
+        "provider": None,
+        "match": result.get("match"),
+        "warnings": warnings,
+        "partial_success": inserted > 0 and bool(warnings),
+    }
+
+    if inserted <= 0:
         return JSONResponse(
             status_code=502,
             content={
-                "error": "openclaw_failed",
-                "detail": "No odds were inserted from OpenClaw output",
-                "fallback_steps": [
-                    "Confirm OpenClaw can access bookmaker pages",
-                    "Retry endpoint with {\"force\": true} if you only want timing",
-                    "Fallback to POST /api/matches/{id}/odds manual batch",
-                ],
+                "error": "auto_scrape_failed",
+                "detail": "Nao foi possivel coletar odds automaticamente da Betano.",
+                **response_payload,
             },
         )
 
-    return {
-        "inserted": inserted,
-        "source": "openclaw",
-        "duration_ms": duration_ms,
-    }
+    return response_payload
 
 
 @app.post("/api/matches/{match_id}/live/map-result")
@@ -1193,9 +1194,7 @@ def _analysis_filter(
             min_date = f"{match_year}-01-01"
         except (ValueError, TypeError):
             min_date = f"{current_year}-01-01"
-        # Past match: use at least match year; allow user date_from only if it gives more history
         analysis_date_from = min_date if (existing_from is None or existing_from >= min_date) else existing_from
-        # If user filtered by events, ensure match's event is included (so we don't get 0 stats)
         if event_ids and match_event_id is not None and match_event_id not in event_ids:
             event_ids = event_ids + [match_event_id]
         if stage_names and match_stage_name and match_stage_name not in stage_names:
@@ -1912,4 +1911,3 @@ def _run_stats_query(stat_type: str, teams: list[dict[str, Any]], map_name: str 
         return {"items": comp_rows}
 
     return {"items": rows}
-

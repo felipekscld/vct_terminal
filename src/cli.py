@@ -80,9 +80,8 @@ def odds_cmd(
         from src.collectors.manual_input import manual_odds_entry
         manual_odds_entry(match_id)
     else:
-        from src.collectors.odds_collector import collect_odds_clawdbot, get_match_description
-        desc = get_match_description(match_id) or f"Match {match_id}"
-        collect_odds_clawdbot(match_id, desc)
+        from src.collectors.odds_collector import collect_odds_from_sites
+        collect_odds_from_sites(match_id)
 
 
 @legacy_app.command()

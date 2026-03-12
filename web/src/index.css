@@ -21,7 +21,6 @@
   box-sizing: border-box;
 }
 
-/* Dark theme: no orange focus outline; use blue/dark only */
 *:focus {
   outline: none;
 }
@@ -60,7 +59,6 @@ body {
   letter-spacing: 0.02em;
 }
 
-/* Dark theme: white titles, text inside panels more visible */
 body .page-title,
 body .font-display.text-ink,
 body .text-ink { color: #ffffff; }
@@ -91,7 +89,6 @@ body .text-emerald-900 { color: #86efac; }
 body .text-red-600 { color: #f87171; }
 body .text-slate-100 { color: #e2e8f0; }
 
-/* Caixas com fundo claro: texto escuro para legibilidade */
 body .bg-white,
 body .bg-white .text-slate-700,
 body .bg-white .text-slate-600,

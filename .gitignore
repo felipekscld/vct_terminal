@@ -73,3 +73,11 @@ assets/
 tmp/
 temp/
 .cache/
+
+# database (local)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# browser automation (local profile/cache)
+data/browser_profile/
