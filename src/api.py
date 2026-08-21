@@ -116,8 +116,8 @@ class MarketsUpdate(BaseModel):
 
 
 class LiveUpdate(BaseModel):
-    betano_live: bool | None = None
-    bet365_live: bool | None = None
+    odds_provider_b_live: bool | None = None
+    odds_provider_a_live: bool | None = None
     show_live_opportunities: bool | None = None
     auto_recalc_on_map_result: bool | None = None
 
@@ -689,7 +689,7 @@ def auto_odds(match_id: int):
             src = data.get("source")
             if isinstance(src, str) and src:
                 sources.add(src)
-    source = "betano_scraping" if "betano_scraping" in sources else "web_scraping"
+    source = "odds_provider_b_scraping" if "odds_provider_b_scraping" in sources else "web_scraping"
     warnings = []
     for bookmaker, data in bookmakers.items():
         error = data.get("error") if isinstance(data, dict) else None
@@ -712,7 +712,7 @@ def auto_odds(match_id: int):
             status_code=502,
             content={
                 "error": "auto_scrape_failed",
-                "detail": "Nao foi possivel coletar odds automaticamente da Betano.",
+                "detail": "Nao foi possivel coletar odds automaticamente do provedor B.",
                 **response_payload,
             },
         )
@@ -887,7 +887,7 @@ def put_config(payload: AppConfigUpdateRequest) -> dict[str, Any]:
 
     if payload.live:
         l = payload.live
-        for key in ("betano_live", "bet365_live", "show_live_opportunities", "auto_recalc_on_map_result"):
+        for key in ("odds_provider_b_live", "odds_provider_a_live", "show_live_opportunities", "auto_recalc_on_map_result"):
             val = getattr(l, key)
             if val is not None:
                 setattr(config.live, key, val)
@@ -1620,8 +1620,8 @@ def _export_config() -> dict[str, Any]:
             "enabled_markets": list(config.markets.enabled_markets),
         },
         "live": {
-            "betano_live": config.live.betano_live,
-            "bet365_live": config.live.bet365_live,
+            "odds_provider_b_live": config.live.odds_provider_b_live,
+            "odds_provider_a_live": config.live.odds_provider_a_live,
             "show_live_opportunities": config.live.show_live_opportunities,
             "auto_recalc_on_map_result": config.live.auto_recalc_on_map_result,
         },
@@ -1655,7 +1655,7 @@ def _apply_config_payload(payload: dict[str, Any]) -> None:
 
     if "live" in payload:
         l = payload["live"] or {}
-        for key in ("betano_live", "bet365_live", "show_live_opportunities", "auto_recalc_on_map_result"):
+        for key in ("odds_provider_b_live", "odds_provider_a_live", "show_live_opportunities", "auto_recalc_on_map_result"):
             if key in l and l[key] is not None:
                 setattr(config.live, key, l[key])
 

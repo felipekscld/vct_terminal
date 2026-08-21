@@ -1,4 +1,4 @@
-"""Best-effort scraper for Bet365 odds pages."""
+"""Best-effort scraper for provider A odds pages."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ import requests
 from bs4 import BeautifulSoup
 
 
-class Bet365Scraper:
-    """Try to scrape esports odds from Bet365 public pages."""
+class ProviderAScraper:
+    """Try to scrape esports odds from provider A public pages."""
 
     BASE_URL = "https://www.bet365.com"
     SEARCH_URLS = (
@@ -33,7 +33,7 @@ class Bet365Scraper:
         )
 
     def search_match(self, team1: str, team2: str) -> str | None:
-        """Find a Bet365 match page URL containing both team names."""
+        """Find a provider A match page URL containing both team names."""
         aliases_a = self._team_aliases(team1)
         aliases_b = self._team_aliases(team2)
 
@@ -85,7 +85,7 @@ class Bet365Scraper:
         return None
 
     def scrape_odds(self, match_url: str, team1: str, team2: str) -> list[dict[str, Any]]:
-        """Extract odds from a specific Bet365 match page."""
+        """Extract odds from a specific provider A match page."""
         try:
             resp = self.session.get(match_url, timeout=self.TIMEOUT, allow_redirects=True)
             resp.raise_for_status()
@@ -129,7 +129,7 @@ class Bet365Scraper:
             for selection, odd in zip(clean_names, clean_prices):
                 odds_list.append(
                     {
-                        "bookmaker": "bet365",
+                        "bookmaker": "odds_provider_a",
                         "market_type": market_type,
                         "selection": selection,
                         "odds_value": odd,
@@ -191,7 +191,7 @@ class Bet365Scraper:
 
     @staticmethod
     def _team_aliases(team: str) -> set[str]:
-        base = Bet365Scraper._normalize_text(team)
+        base = ProviderAScraper._normalize_text(team)
         words = [w for w in base.split() if w]
         aliases: set[str] = set()
         if base:
@@ -227,9 +227,9 @@ class Bet365Scraper:
         self.session.close()
 
 
-def scrape_bet365(team1: str, team2: str) -> list[dict[str, Any]]:
-    """Convenience wrapper for Bet365 scraping."""
-    scraper = Bet365Scraper()
+def scrape_provider_a(team1: str, team2: str) -> list[dict[str, Any]]:
+    """Convenience wrapper for provider A scraping."""
+    scraper = ProviderAScraper()
     try:
         match_url = scraper.search_match(team1, team2)
         if not match_url:

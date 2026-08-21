@@ -1,7 +1,7 @@
 from src.collectors.odds_collector import _sanitize_entries
 
 
-def test_sanitize_entries_keeps_requested_betano_markets():
+def test_sanitize_entries_keeps_requested_odds_provider_b_markets():
     entries = [
         {"market_type": "correct_score", "selection": "2 - 1", "odds_value": 4.45},
         {"market_type": "over_maps", "selection": "Mais de 2.5", "odds_value": 2.02},
@@ -17,7 +17,7 @@ def test_sanitize_entries_keeps_requested_betano_markets():
 
     cleaned = _sanitize_entries(
         entries=entries,
-        bookmaker="betano",
+        bookmaker="odds_provider_b",
         team1="Xi Lai Gaming",
         team2="NRG",
         team1_tag="XLG",
@@ -50,7 +50,7 @@ def test_sanitize_entries_drops_invalid_joined_winner_rows():
 
     cleaned = _sanitize_entries(
         entries=entries,
-        bookmaker="betano",
+        bookmaker="odds_provider_b",
         team1="Xi Lai Gaming",
         team2="NRG",
         team1_tag="XLG",
@@ -73,7 +73,7 @@ def test_sanitize_entries_preserves_handicap_and_total_maps_lines():
 
     cleaned = _sanitize_entries(
         entries=entries,
-        bookmaker="betano",
+        bookmaker="odds_provider_b",
         team1="Xi Lai Gaming",
         team2="NRG",
         team1_tag="XLG",

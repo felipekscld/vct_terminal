@@ -217,7 +217,7 @@ def _input_odds(match_id: int):
     mode = inquirer.select(
         message="Como inserir odds?",
         choices=[
-            {"name": "Colar batch (betano map1_winner MIBR 1.75; bet365 map1_ot Yes 5.00; ...)", "value": "batch"},
+            {"name": "Colar batch (odds_provider_b map1_winner MIBR 1.75; odds_provider_a map1_ot Yes 5.00; ...)", "value": "batch"},
             {"name": "Uma por uma (interativo)", "value": "manual"},
             {"name": "<< Voltar", "value": "back"},
         ],
@@ -233,7 +233,7 @@ def _input_odds(match_id: int):
 
         entries = parse_odds_string(odds_str)
         if not entries:
-            console.print("[red]Nenhuma odd parseada. Formato: betano map1_winner MIBR 1.75[/red]")
+            console.print("[red]Nenhuma odd parseada. Formato: odds_provider_b map1_winner MIBR 1.75[/red]")
             return
 
         count = batch_odds_insert(match_id, entries)
@@ -492,7 +492,7 @@ def _settings_flow():
                 {"name": "Mercados preferidos", "value": "markets"},
                 {"name": "Filtro de dados (eventos/datas)", "value": "filter"},
                 {"name": f"Stake spread default (R${config.multibet.default_spread_stake:.0f})", "value": "spread_stake"},
-                {"name": "Live betting (Betano/Bet365)", "value": "live_cfg"},
+                {"name": "Live betting (Provedor A/Provedor B)", "value": "live_cfg"},
                 Separator(),
                 {"name": "<< Voltar", "value": "back"},
             ],
@@ -604,8 +604,8 @@ def _config_spread_stake():
 
 def _config_live():
     console.print(f"\n[bold]Live Betting Config[/bold]")
-    console.print(f"  [odds.betano]Betano[/odds.betano]: suporta apostas ao vivo em Valorant")
-    console.print(f"  [odds.bet365]Bet365[/odds.bet365]: NAO suporta apostas ao vivo em Valorant")
+    console.print(f"  [odds.provider_b]Provedor B[/odds.provider_b]: suporta mercados ao vivo em Valorant")
+    console.print(f"  [odds.provider_a]Provedor A[/odds.provider_a]: NAO suporta mercados ao vivo em Valorant")
 
     config.live.show_live_opportunities = inquirer.confirm(
         message="Mostrar oportunidades live na analise?",

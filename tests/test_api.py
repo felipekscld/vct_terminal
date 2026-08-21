@@ -80,12 +80,12 @@ def test_auto_odds_partial_success(monkeypatch):
         return {
             "inserted": 4,
             "bookmakers": {
-                "betano": {"scraped": 4, "inserted": 4, "source": "betano_scraping", "error": None},
-                "bet365": {
+                "odds_provider_b": {"scraped": 4, "inserted": 4, "source": "odds_provider_b_scraping", "error": None},
+                "odds_provider_a": {
                     "scraped": 0,
                     "inserted": 0,
                     "source": "disabled",
-                    "error": "Integracao automatica da bet365 desativada neste projeto.",
+                    "error": "Integracao automatica do provedor A desativada neste projeto.",
                 },
             },
         }
@@ -96,9 +96,9 @@ def test_auto_odds_partial_success(monkeypatch):
     assert response.status_code == 200
     payload = response.json()
     assert payload["inserted"] == 4
-    assert payload["source"] == "betano_scraping"
+    assert payload["source"] == "odds_provider_b_scraping"
     assert payload["partial_success"] is True
-    assert any("bet365" in warning.lower() for warning in payload["warnings"])
+    assert any("odds_provider_a" in warning.lower() for warning in payload["warnings"])
 
 
 def test_auto_odds_failure_when_nothing_inserted(monkeypatch):
@@ -109,12 +109,12 @@ def test_auto_odds_failure_when_nothing_inserted(monkeypatch):
         return {
             "inserted": 0,
             "bookmakers": {
-                "betano": {"scraped": 0, "inserted": 0, "source": "betano_scraping", "error": "Nao encontrado"},
-                "bet365": {
+                "odds_provider_b": {"scraped": 0, "inserted": 0, "source": "odds_provider_b_scraping", "error": "Nao encontrado"},
+                "odds_provider_a": {
                     "scraped": 0,
                     "inserted": 0,
                     "source": "disabled",
-                    "error": "Integracao automatica da bet365 desativada neste projeto.",
+                    "error": "Integracao automatica do provedor A desativada neste projeto.",
                 },
             },
         }

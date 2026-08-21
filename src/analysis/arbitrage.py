@@ -1,6 +1,6 @@
 """Arbitrage and cross-bookmaker comparison.
 
-Detects surebets and anomalies when odds from Betano and Bet365
+Detects surebets and anomalies when odds from provider B and provider A
 imply probabilities that sum to less than 1.
 """
 

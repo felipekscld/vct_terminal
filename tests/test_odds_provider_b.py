@@ -1,15 +1,15 @@
-from src.collectors.betano_scraper import BetanoStealthScraper
+from src.collectors.odds_provider_b import ProviderBScraper
 
 
 def test_team_aliases_include_name_and_tag_forms():
-    aliases = BetanoStealthScraper._team_aliases("Xi Lai Gaming", "XLG")
+    aliases = ProviderBScraper._team_aliases("Xi Lai Gaming", "XLG")
     assert "xi lai gaming" in aliases
     assert "xilaigaming" in aliases
     assert "xlg" in aliases
 
 
 def test_extract_map_number_and_market_type_mapping():
-    scraper = BetanoStealthScraper()
+    scraper = ProviderBScraper()
 
     assert scraper._extract_map_number("map 2 winner") == 2
     assert scraper._map_market_type("map 2 winner", 2) == "map2_winner"
@@ -19,7 +19,7 @@ def test_extract_map_number_and_market_type_mapping():
 
 
 def test_decimal_parser_handles_decimal_and_american():
-    scraper = BetanoStealthScraper()
+    scraper = ProviderBScraper()
 
     assert scraper._to_decimal("1.95") == 1.95
     assert round(scraper._to_decimal("+120"), 2) == 2.20
@@ -27,7 +27,7 @@ def test_decimal_parser_handles_decimal_and_american():
 
 
 def test_parse_markets_from_node_maps_outcomes_correctly():
-    scraper = BetanoStealthScraper()
+    scraper = ProviderBScraper()
     node = {
         "name": "Xi Lai Gaming vs NRG",
         "markets": [
@@ -56,12 +56,12 @@ def test_parse_markets_from_node_maps_outcomes_correctly():
 
 
 def test_extract_selection_price_pairs_parses_multiple_pairs():
-    pairs = BetanoStealthScraper._extract_selection_price_pairs("Sim 5.80 Não 1.11")
+    pairs = ProviderBScraper._extract_selection_price_pairs("Sim 5.80 Não 1.11")
     assert pairs == [("Sim", "5.80"), ("Não", "1.11")]
 
 
 def test_extract_ot_entries_from_page_text_reads_yes_no():
-    scraper = BetanoStealthScraper()
+    scraper = ProviderBScraper()
     text = (
         "Prorrogação (Mapa 1) Sim 5.80 Não 1.11 "
         "Prorrogação (Mapa 2) Sim 5.80 Não 1.11 "

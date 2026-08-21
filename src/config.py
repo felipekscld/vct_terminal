@@ -182,8 +182,8 @@ class MarketPreferences:
 @dataclass
 class LiveBettingConfig:
     """Configuration for live/in-play betting analysis."""
-    betano_live: bool = True
-    bet365_live: bool = False
+    odds_provider_b_live: bool = True
+    odds_provider_a_live: bool = False
     show_live_opportunities: bool = True
     auto_recalc_on_map_result: bool = True
 

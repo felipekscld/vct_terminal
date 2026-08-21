@@ -36,7 +36,7 @@ function LivePage() {
     <div className="space-y-4">
       <section className="panel p-4">
         <h2 className="page-title text-xl font-bold text-ink">Análise ao vivo</h2>
-        <p className="text-sm text-slate-600">Betano ao vivo x Bet365 pre-match.</p>
+        <p className="text-sm text-slate-600">Provedor B ao vivo x Provedor A pre-match.</p>
       </section>
 
       <LivePanel matchId={matchId} liveState={data} onUpdated={setData} />

@@ -28,7 +28,7 @@ function LivePanel({ matchId, liveState, onUpdated }) {
     <section className="panel p-4">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="font-display text-base font-semibold">Painel Live</h3>
-        <span className="rounded-full bg-mint-soft px-2 py-1 text-xs font-semibold text-emerald-800">Betano live · Bet365 nao</span>
+        <span className="rounded-full bg-mint-soft px-2 py-1 text-xs font-semibold text-emerald-800">Provedor B live · Provedor A nao</span>
       </div>
 
       <div className="grid gap-2 md:grid-cols-5">

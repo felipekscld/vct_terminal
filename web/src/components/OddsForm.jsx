@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { api } from '../api/client'
 
-const BOOKMAKERS = ['betano', 'bet365']
+const BOOKMAKERS = ['odds_provider_b', 'odds_provider_a']
+const BOOKMAKER_LABELS = { odds_provider_b: 'Provedor B', odds_provider_a: 'Provedor A' }
 
 function parseBatch(batchText) {
   const lines = batchText.replace(/\n/g, ';').split(';').map((part) => part.trim()).filter(Boolean)
@@ -154,7 +155,7 @@ function OddsForm({ matchId, teams, maps, onSaved }) {
         <div className="grid gap-2 md:grid-cols-2">
           {BOOKMAKERS.map((book) => (
             <div key={book} className="rounded-lg bg-slate-50 p-2">
-              <p className="text-xs font-semibold uppercase text-slate-500">{book}</p>
+              <p className="text-xs font-semibold uppercase text-slate-500">{BOOKMAKER_LABELS[book]}</p>
               <div className="mt-2 grid gap-2">
                 <input className="rounded border p-2 text-sm" placeholder={`Odd ${teamA}`} value={values[`match_winner_${book}_a`] || ''} onChange={(e) => setField(`match_winner_${book}_a`, e.target.value)} />
                 <input className="rounded border p-2 text-sm" placeholder={`Odd ${teamB}`} value={values[`match_winner_${book}_b`] || ''} onChange={(e) => setField(`match_winner_${book}_b`, e.target.value)} />
@@ -170,7 +171,7 @@ function OddsForm({ matchId, teams, maps, onSaved }) {
           <div className="grid gap-3 md:grid-cols-2">
             {BOOKMAKERS.map((book) => (
               <div key={`${map.map_order}_${book}`} className="rounded-lg bg-slate-50 p-2">
-                <p className="text-xs font-semibold uppercase text-slate-500">{book}</p>
+                <p className="text-xs font-semibold uppercase text-slate-500">{BOOKMAKER_LABELS[book]}</p>
                 <div className="mt-2 grid gap-2">
                   <input className="rounded border p-2 text-sm" placeholder={`Vencedor ${teamA}`} value={values[`map${map.map_order}_winner_${book}_a`] || ''} onChange={(e) => setField(`map${map.map_order}_winner_${book}_a`, e.target.value)} />
                   <input className="rounded border p-2 text-sm" placeholder={`Vencedor ${teamB}`} value={values[`map${map.map_order}_winner_${book}_b`] || ''} onChange={(e) => setField(`map${map.map_order}_winner_${book}_b`, e.target.value)} />
@@ -189,7 +190,7 @@ function OddsForm({ matchId, teams, maps, onSaved }) {
         <p className="mb-2 text-sm font-semibold text-slate-700">Batch Paste (alternativo)</p>
         <textarea
           className="h-24 w-full rounded border p-2 text-sm"
-          placeholder="betano map1_winner MIBR 1.75; bet365 map1_ot Yes 5.00"
+          placeholder="odds_provider_b map1_winner MIBR 1.75; odds_provider_a map1_ot Yes 5.00"
           value={batchText}
           onChange={(e) => setBatchText(e.target.value)}
         />

@@ -1,6 +1,6 @@
 """Live / in-play analysis during a match.
 
-Key difference: Betano supports live Valorant betting, Bet365 does NOT.
+Key difference: Provider B supports live Valorant betting, Provider A does NOT.
 This module handles:
 - Inputting map results as they happen
 - Recalculating series probabilities with updated info
@@ -34,10 +34,10 @@ def live_analysis_menu(match_id: int, info: dict):
 
     console.print(f"\n[bold cyan]Live Analysis — {t1} vs {t2} ({bo_type})[/bold cyan]")
     console.print(Panel(
-        f"[odds.betano]Betano[/odds.betano]: aceita apostas AO VIVO durante a partida\n"
-        f"[odds.bet365]Bet365[/odds.bet365]: NAO aceita apostas ao vivo em Valorant\n\n"
-        f"[dim]Isso significa que odds live so estao disponiveis na Betano.[/dim]\n"
-        f"[dim]Se voce apostou pre-match na Bet365, pode hedgear ao vivo na Betano.[/dim]",
+        f"[odds.provider_b]Provedor B[/odds.provider_b]: aceita mercados AO VIVO durante a partida\n"
+        f"[odds.provider_a]Provedor A[/odds.provider_a]: NAO aceita mercados ao vivo em Valorant\n\n"
+        f"[dim]Isso significa que odds live so estao disponiveis no Provedor B.[/dim]\n"
+        f"[dim]Se voce apostou pre-match no Provedor A, pode hedgear ao vivo no Provedor B.[/dim]",
         title="Plataformas Live",
         border_style="yellow",
     ))
@@ -61,7 +61,7 @@ def live_analysis_menu(match_id: int, info: dict):
             {"name": f"Registrar resultado de mapa (Map {len(map_results) + 1})", "value": "map_result"},
             {"name": "Ver probabilidades atualizadas da serie", "value": "series_prob"},
             {"name": "Calcular hedge (apostei pre-match, quero proteger)", "value": "hedge"},
-            {"name": "Mercados live disponiveis (Betano)", "value": "live_markets"},
+            {"name": "Mercados live disponiveis (Provedor B)", "value": "live_markets"},
             Separator(),
             {"name": "<< Voltar", "value": "back"},
         ]
@@ -189,7 +189,7 @@ def _live_hedge(t1, t2, a_score, b_score, maps_to_win):
     """Hedge calculator for live scenario."""
     console.print("\n[bold]Hedge ao Vivo[/bold]")
     console.print("[dim]Voce apostou pre-match e quer proteger agora.[/dim]")
-    console.print("[dim]Lembre: odds live so disponiveis na Betano![/dim]\n")
+    console.print("[dim]Lembre: odds live so disponiveis no Provedor B![/dim]\n")
 
     bet_on = inquirer.select(
         message="Em quem voce apostou pre-match?",
@@ -202,7 +202,7 @@ def _live_hedge(t1, t2, a_score, b_score, maps_to_win):
     stake_str = inquirer.text(message="Quanto apostou (R$):").execute()
     odds_str = inquirer.text(message="Odds da aposta original:").execute()
     live_odds_str = inquirer.text(
-        message=f"Odds LIVE no oponente (Betano):",
+        message=f"Odds LIVE no oponente (Provedor B):",
     ).execute()
 
     try:
@@ -216,7 +216,7 @@ def _live_hedge(t1, t2, a_score, b_score, maps_to_win):
 
     console.print(Panel(
         f"[bold]Aposta original:[/bold] R${result['original_stake']:.2f} em {bet_team} @ {result['original_odds']}\n"
-        f"[bold]Hedge sugerido:[/bold] R${result['hedge_stake']:.2f} em {hedge_team} @ {result['hedge_odds']} [odds.betano](Betano live)[/odds.betano]\n\n"
+        f"[bold]Hedge sugerido:[/bold] R${result['hedge_stake']:.2f} em {hedge_team} @ {result['hedge_odds']} [odds.provider_b](Provedor B live)[/odds.provider_b]\n\n"
         f"  Se {bet_team} ganha: R${result['profit_if_original_wins']:+.2f}\n"
         f"  Se {hedge_team} ganha: R${result['profit_if_hedge_wins']:+.2f}\n"
         f"  Total investido: R${result['total_invested']:.2f}\n"
@@ -234,7 +234,7 @@ def _show_live_markets(a_score, b_score, maps_to_win, t1, t2, map_results, veto_
 
     lines = []
     lines.append("[bold]Mercados disponiveis AO VIVO:[/bold]\n")
-    lines.append(f"[odds.betano]BETANO (aceita live):[/odds.betano]")
+    lines.append(f"[odds.provider_b]PROVEDOR B (aceita live):[/odds.provider_b]")
 
     if a_score < maps_to_win and b_score < maps_to_win:
         lines.append(f"  - Match Winner (serie)")
@@ -249,9 +249,9 @@ def _show_live_markets(a_score, b_score, maps_to_win, t1, t2, map_results, veto_
     else:
         lines.append(f"  [dim]Serie ja encerrada[/dim]")
 
-    lines.append(f"\n[odds.bet365]BET365 (NAO aceita live):[/odds.bet365]")
+    lines.append(f"\n[odds.provider_a]PROVEDOR A (NAO aceita live):[/odds.provider_a]")
     lines.append(f"  [dim]Nenhum mercado live disponivel.[/dim]")
-    lines.append(f"  [dim]Se apostou pre-match na Bet365, use o hedge na Betano.[/dim]")
+    lines.append(f"  [dim]Se apostou pre-match no Provedor A, use o hedge no Provedor B.[/dim]")
 
     console.print(Panel("\n".join(lines), title="Live Markets", border_style="yellow"))
 

@@ -122,7 +122,7 @@ def render_edges_table(edges: list[EdgeResult]) -> Panel:
     for e in edges:
         edge_color = "edge.strong" if e.edge >= config.edge.strong_edge else \
                      "edge.weak" if e.edge >= config.edge.min_edge else "edge.none"
-        bk_style = "odds.betano" if "betano" in e.bookmaker else "odds.bet365"
+        bk_style = "odds.provider_b" if "odds_provider_b" in e.bookmaker else "odds.provider_a"
 
         map_label = f" M{e.map_number}" if e.map_number else ""
         table.add_row(

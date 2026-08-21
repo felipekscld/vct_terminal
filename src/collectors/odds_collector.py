@@ -1,4 +1,4 @@
-"""Odds collection for automatic ingestion (Betano-only scraping)."""
+"""Odds collection for automatic ingestion (odds provider B scraping)."""
 
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ from typing import Any
 
 from rich.console import Console
 
-from src.collectors.betano_scraper import scrape_betano_detailed
+from src.collectors.odds_provider_b import scrape_provider_b_detailed
 from src.db.connection import get_db
 
 console = Console()
 
-BET365_DISABLED_ERROR = "Integracao automatica da bet365 desativada neste projeto."
+ODDS_PROVIDER_A_DISABLED_ERROR = "Integracao automatica do provedor A desativada neste projeto."
 
 
 def _infer_map_number(market_type: str) -> int | None:
@@ -347,19 +347,19 @@ def collect_odds_from_sites(match_id: int) -> dict[str, Any]:
         return {
             "inserted": 0,
             "bookmakers": {
-                "betano": {
+                "odds_provider_b": {
                     "scraped": 0,
                     "inserted": 0,
-                    "source": "betano_scraping",
+                    "source": "odds_provider_b_scraping",
                     "error": "Match nao encontrado.",
-                    "error_code": "betano_match_not_found",
+                    "error_code": "odds_provider_b_match_not_found",
                 },
-                "bet365": {
+                "odds_provider_a": {
                     "scraped": 0,
                     "inserted": 0,
                     "source": "disabled",
-                    "error": BET365_DISABLED_ERROR,
-                    "error_code": "bet365_disabled",
+                    "error": ODDS_PROVIDER_A_DISABLED_ERROR,
+                    "error_code": "odds_provider_a_disabled",
                 },
             },
             "provider": None,
@@ -374,25 +374,25 @@ def collect_odds_from_sites(match_id: int) -> dict[str, Any]:
         return {
             "inserted": 0,
             "bookmakers": {
-                "betano": {
+                "odds_provider_b": {
                     "scraped": 0,
                     "inserted": 0,
-                    "source": "betano_scraping",
+                    "source": "odds_provider_b_scraping",
                     "error": "Times nao encontrados no match.",
-                    "error_code": "betano_match_not_found",
+                    "error_code": "odds_provider_b_match_not_found",
                 },
-                "bet365": {
+                "odds_provider_a": {
                     "scraped": 0,
                     "inserted": 0,
                     "source": "disabled",
-                    "error": BET365_DISABLED_ERROR,
-                    "error_code": "bet365_disabled",
+                    "error": ODDS_PROVIDER_A_DISABLED_ERROR,
+                    "error_code": "odds_provider_a_disabled",
                 },
             },
             "provider": None,
         }
 
-    scraped = scrape_betano_detailed(
+    scraped = scrape_provider_b_detailed(
         team1=team1,
         team2=team2,
         team1_tag=team1_tag,
@@ -402,14 +402,14 @@ def collect_odds_from_sites(match_id: int) -> dict[str, Any]:
 
     entries = _sanitize_entries(
         raw_entries,
-        "betano",
+        "odds_provider_b",
         team1=team1,
         team2=team2,
         team1_tag=team1_tag,
         team2_tag=team2_tag,
     )
-    entries = _force_include_ot_entries(raw_entries, entries, "betano")
-    if os.getenv("BETANO_SCRAPER_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}:
+    entries = _force_include_ot_entries(raw_entries, entries, "odds_provider_b")
+    if os.getenv("ODDS_PROVIDER_B_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}:
         raw_counter = Counter(str(x.get("market_type", "")).lower().strip() for x in raw_entries)
         clean_counter = Counter(str(x.get("market_type", "")).lower().strip() for x in entries)
         preview = [
@@ -442,54 +442,54 @@ def collect_odds_from_sites(match_id: int) -> dict[str, Any]:
             if str(x.get("market_type", "")).lower().strip().endswith("_ot")
         ][:12]
         console.print(
-            "[BETANO DEBUG] "
+            "[PROVIDER B DEBUG] "
             f"raw_entries={len(raw_entries)} raw_markets={dict(raw_counter)} "
             f"clean_entries={len(entries)} clean_markets={dict(clean_counter)}"
         )
-        console.print(f"[BETANO DEBUG] raw_preview={preview}")
-        console.print(f"[BETANO DEBUG] raw_ot_preview={raw_ot_preview}")
-        console.print(f"[BETANO DEBUG] clean_ot_preview={clean_ot_preview}")
+        console.print(f"[PROVIDER B DEBUG] raw_preview={preview}")
+        console.print(f"[PROVIDER B DEBUG] raw_ot_preview={raw_ot_preview}")
+        console.print(f"[PROVIDER B DEBUG] clean_ot_preview={clean_ot_preview}")
     inserted = insert_odds(match_id, entries) if entries else 0
 
-    betano_error = scraped.get("error")
-    betano_error_code = scraped.get("error_code")
+    provider_b_error = scraped.get("error")
+    provider_b_error_code = scraped.get("error_code")
 
     if entries and inserted <= 0:
-        betano_error = "Odds da betano foram coletadas, mas falharam ao gravar no banco."
-        betano_error_code = "betano_parse_failed"
-    elif not entries and raw_entries and not betano_error:
-        betano_error = "Odds da betano foram capturadas, mas descartadas na validacao."
-        betano_error_code = "betano_parse_failed"
+        provider_b_error = "Odds do provedor B foram coletadas, mas falharam ao gravar no banco."
+        provider_b_error_code = "odds_provider_b_parse_failed"
+    elif not entries and raw_entries and not provider_b_error:
+        provider_b_error = "Odds do provedor B foram capturadas, mas descartadas na validacao."
+        provider_b_error_code = "odds_provider_b_parse_failed"
     elif inserted > 0:
-        betano_error = None
-        betano_error_code = None
+        provider_b_error = None
+        provider_b_error_code = None
 
-    betano_result = {
+    provider_b_result = {
         "scraped": len(entries),
         "inserted": inserted,
-        "source": str(scraped.get("source") or "betano_scraping"),
-        "error": betano_error,
-        "error_code": betano_error_code,
+        "source": str(scraped.get("source") or "odds_provider_b_scraping"),
+        "error": provider_b_error,
+        "error_code": provider_b_error_code,
     }
 
-    if betano_result["error"]:
-        console.print(f"[red]{betano_result['error']}[/red]")
+    if provider_b_result["error"]:
+        console.print(f"[red]{provider_b_result['error']}[/red]")
     else:
-        console.print(f"[green]✓ betano: {betano_result['inserted']} odds gravadas.[/green]")
+        console.print(f"[green]✓ odds_provider_b: {provider_b_result['inserted']} odds gravadas.[/green]")
 
-    bet365_result = {
+    provider_a_result = {
         "scraped": 0,
         "inserted": 0,
         "source": "disabled",
-        "error": BET365_DISABLED_ERROR,
-        "error_code": "bet365_disabled",
+        "error": ODDS_PROVIDER_A_DISABLED_ERROR,
+        "error_code": "odds_provider_a_disabled",
     }
 
     return {
         "inserted": inserted,
         "bookmakers": {
-            "betano": betano_result,
-            "bet365": bet365_result,
+            "odds_provider_b": provider_b_result,
+            "odds_provider_a": provider_a_result,
         },
         "provider": None,
         "match": {

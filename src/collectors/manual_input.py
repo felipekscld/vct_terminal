@@ -25,14 +25,14 @@ MARKET_TYPES = [
     "over_3.5_maps",
 ]
 
-BOOKMAKERS = ["betano", "bet365"]
+BOOKMAKERS = ["odds_provider_b", "odds_provider_a"]
 
 
 def parse_odds_string(odds_str: str) -> list[dict]:
     """Parse a batch odds string into a list of odds dicts.
 
     Accepted formats (separated by ; or newlines):
-        "betano map1_winner MIBR 1.75; bet365 map1_winner MIBR 1.80; betano map1_ot Yes 4.50"
+        "odds_provider_b map1_winner MIBR 1.75; odds_provider_a map1_winner MIBR 1.80; odds_provider_b map1_ot Yes 4.50"
 
     Each entry: "bookmaker market selection odds"
     """
@@ -101,7 +101,7 @@ def quick_odds_entry(match_id: int, odds_str: str) -> int:
     if not entries:
         console.print("[red]Could not parse any odds from the string.[/red]")
         console.print("[dim]Format: 'bookmaker market selection odds; ...'[/dim]")
-        console.print("[dim]Example: 'betano map1_winner MIBR 1.75; bet365 map1_ot Yes 5.00'[/dim]")
+        console.print("[dim]Example: 'odds_provider_b map1_winner MIBR 1.75; odds_provider_a map1_ot Yes 5.00'[/dim]")
         return 0
 
     count = batch_odds_insert(match_id, entries)
@@ -179,7 +179,7 @@ def manual_odds_entry(match_id: int) -> int:
         if market.lower() == "done":
             break
 
-        bookmaker = Prompt.ask("Bookmaker", choices=BOOKMAKERS, default="betano")
+        bookmaker = Prompt.ask("Bookmaker", choices=BOOKMAKERS, default="odds_provider_b")
         selection = Prompt.ask("Selection (e.g., 'Fnatic', 'Yes', 'Over 24.5')")
         odds_val = FloatPrompt.ask("Odds (decimal)")
 

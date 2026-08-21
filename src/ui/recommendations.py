@@ -34,9 +34,10 @@ def render_action_summary(
         console.print("\n[edge.strong]--- Apostas recomendadas ---[/edge.strong]")
         for e in strong:
             map_label = f" Map{e.map_number}" if e.map_number else ""
+            bk_style = f"odds.{e.bookmaker.replace('odds_', '', 1)}"
             console.print(
                 f"  {e.market}{map_label} {e.selection} @ "
-                f"[odds.{e.bookmaker}]{e.bookmaker}[/odds.{e.bookmaker}] {e.odds:.2f} | "
+                f"[{bk_style}]{e.bookmaker}[/{bk_style}] {e.odds:.2f} | "
                 f"edge={e.edge:+.1%} | stake=R${e.suggested_stake:.0f}"
             )
 

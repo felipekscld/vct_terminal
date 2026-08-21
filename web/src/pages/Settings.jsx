@@ -77,8 +77,8 @@ function SettingsPage({ config: parentConfig, onConfigUpdate }) {
           enabled_markets: config?.markets?.enabled_markets || []
         },
         live: {
-          betano_live: Boolean(config?.live?.betano_live),
-          bet365_live: Boolean(config?.live?.bet365_live),
+          odds_provider_b_live: Boolean(config?.live?.odds_provider_b_live),
+          odds_provider_a_live: Boolean(config?.live?.odds_provider_a_live),
           show_live_opportunities: Boolean(config?.live?.show_live_opportunities),
           auto_recalc_on_map_result: Boolean(config?.live?.auto_recalc_on_map_result)
         }
@@ -193,8 +193,8 @@ function SettingsPage({ config: parentConfig, onConfigUpdate }) {
       <section className="panel p-4">
         <h3 className="font-display text-base font-semibold text-ink">Apostas ao vivo</h3>
         <div className="mt-2 space-y-2">
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(config?.live?.betano_live)} onChange={(e) => setField('live.betano_live', e.target.checked)} /> Considerar odds ao vivo da Betano</label>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(config?.live?.bet365_live)} onChange={(e) => setField('live.bet365_live', e.target.checked)} /> Considerar odds ao vivo da Bet365</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(config?.live?.odds_provider_b_live)} onChange={(e) => setField('live.odds_provider_b_live', e.target.checked)} /> Considerar odds ao vivo do Provedor B</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(config?.live?.odds_provider_a_live)} onChange={(e) => setField('live.odds_provider_a_live', e.target.checked)} /> Considerar odds ao vivo do Provedor A</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(config?.live?.show_live_opportunities)} onChange={(e) => setField('live.show_live_opportunities', e.target.checked)} /> Mostrar oportunidades de live no painel</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(config?.live?.auto_recalc_on_map_result)} onChange={(e) => setField('live.auto_recalc_on_map_result', e.target.checked)} /> Recalcular probabilidades ao registrar resultado de mapa</label>
         </div>

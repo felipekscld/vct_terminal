@@ -1,4 +1,4 @@
-"""Betano-only scraper using Playwright network capture with DOM fallback."""
+"""Scraper for odds provider B using Playwright network capture with DOM fallback."""
 
 from __future__ import annotations
 
@@ -24,27 +24,27 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 @dataclass
-class BetanoScraperConfig:
-    headless: bool = _env_bool("BETANO_SCRAPER_HEADLESS", False)
-    timeout_ms: int = int(os.getenv("BETANO_SCRAPER_TIMEOUT_MS", "30000"))
-    retries: int = int(os.getenv("BETANO_SCRAPER_RETRIES", "3"))
-    proxy_url: str | None = (os.getenv("BETANO_PROXY_URL") or "").strip() or None
-    debug: bool = _env_bool("BETANO_SCRAPER_DEBUG", False)
-    profile_dir: Path = Path("data/browser_profile/betano")
+class ProviderBConfig:
+    headless: bool = _env_bool("ODDS_PROVIDER_B_HEADLESS", False)
+    timeout_ms: int = int(os.getenv("ODDS_PROVIDER_B_TIMEOUT_MS", "30000"))
+    retries: int = int(os.getenv("ODDS_PROVIDER_B_RETRIES", "3"))
+    proxy_url: str | None = (os.getenv("ODDS_PROVIDER_B_PROXY_URL") or "").strip() or None
+    debug: bool = _env_bool("ODDS_PROVIDER_B_DEBUG", False)
+    profile_dir: Path = Path("data/browser_profile/provider_b")
 
 
-class BetanoScraperError(RuntimeError):
+class ProviderBError(RuntimeError):
     def __init__(self, code: str, message: str):
         super().__init__(message)
         self.code = code
 
 
-class BetanoStealthScraper:
-    BETANO_MASTER_URLS = (
+class ProviderBScraper:
+    PROVIDER_B_MASTER_URLS = (
         "https://www.betano.bet.br/sport/esports/competicoes/valorant/189513/?sl=205971",
         "https://www.betano.bet.br/sport/esports/competicoes/valorant/189513/",
     )
-    BETANO_URLS = (
+    PROVIDER_B_URLS = (
         "https://www.betano.bet.br/sport/esports/competicoes/valorant/189513/",
         "https://www.betano.bet.br/sport/esports/competicoes/valorant/189513/?sl=205971",
         "https://www.betano.bet.br/sport/esports/competicoes/valorant/",
@@ -61,8 +61,8 @@ class BetanoStealthScraper:
         "Chrome/133.0.0.0 Safari/537.36"
     )
 
-    def __init__(self, config: BetanoScraperConfig | None = None):
-        self.config = config or BetanoScraperConfig()
+    def __init__(self, config: ProviderBConfig | None = None):
+        self.config = config or ProviderBConfig()
 
     def scrape_match_odds(
         self,
@@ -71,31 +71,31 @@ class BetanoStealthScraper:
         team1_tag: str | None = None,
         team2_tag: str | None = None,
     ) -> list[dict[str, Any]]:
-        last_error: BetanoScraperError | None = None
+        last_error: ProviderBError | None = None
 
         for attempt in range(1, max(self.config.retries, 1) + 1):
             try:
                 entries = self._scrape_once(team1, team2, team1_tag=team1_tag, team2_tag=team2_tag)
                 if entries:
                     return entries
-                last_error = BetanoScraperError(
-                    "betano_markets_not_found",
-                    "Mercados da Betano nao foram encontrados para o confronto.",
+                last_error = ProviderBError(
+                    "odds_provider_b_markets_not_found",
+                    "Mercados do Provedor B nao foram encontrados para o confronto.",
                 )
-            except BetanoScraperError as exc:
+            except ProviderBError as exc:
                 last_error = exc
-                if exc.code in {"betano_browser_closed"}:
+                if exc.code in {"odds_provider_b_browser_closed"}:
                     break
             except Exception as exc:
                 if self._is_closed_error(exc):
-                    last_error = BetanoScraperError(
-                        "betano_browser_closed",
-                        "Navegador/contexto da Betano foi fechado durante a coleta.",
+                    last_error = ProviderBError(
+                        "odds_provider_b_browser_closed",
+                        "Navegador/contexto do Provedor B foi fechado durante a coleta.",
                     )
                     break
-                last_error = BetanoScraperError(
-                    "betano_parse_failed",
-                    f"Falha inesperada no scraper da Betano: {exc}",
+                last_error = ProviderBError(
+                    "odds_provider_b_parse_failed",
+                    f"Falha inesperada no scraper do Provedor B: {exc}",
                 )
 
             if attempt < self.config.retries:
@@ -104,7 +104,7 @@ class BetanoStealthScraper:
 
         if last_error is not None:
             raise last_error
-        raise BetanoScraperError("betano_parse_failed", "Falha desconhecida no scraper da Betano.")
+        raise ProviderBError("odds_provider_b_parse_failed", "Falha desconhecida no scraper do Provedor B.")
 
     def _scrape_once(
         self,
@@ -117,8 +117,8 @@ class BetanoStealthScraper:
             from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
             from playwright.sync_api import sync_playwright
         except Exception as exc:
-            raise BetanoScraperError(
-                "betano_parse_failed",
+            raise ProviderBError(
+                "odds_provider_b_parse_failed",
                 f"Playwright nao disponivel. Instale dependencias: {exc}",
             ) from exc
 
@@ -130,7 +130,7 @@ class BetanoStealthScraper:
         aliases_a = self._team_aliases(team1, team1_tag)
         aliases_b = self._team_aliases(team2, team2_tag)
         if not aliases_a or not aliases_b:
-            raise BetanoScraperError("betano_match_not_found", "Times invalidos para busca na Betano.")
+            raise ProviderBError("odds_provider_b_match_not_found", "Times invalidos para busca no Provedor B.")
 
         self.config.profile_dir.mkdir(parents=True, exist_ok=True)
 
@@ -185,7 +185,7 @@ class BetanoStealthScraper:
                 page.on("response", on_response)
 
                 opened = False
-                for url in self.BETANO_URLS:
+                for url in self.PROVIDER_B_URLS:
                     try:
                         page.goto(url, wait_until="domcontentloaded", timeout=self.config.timeout_ms)
                         opened = True
@@ -194,16 +194,16 @@ class BetanoStealthScraper:
                         continue
                     except Exception as exc:
                         if self._is_closed_error(exc):
-                            raise BetanoScraperError(
-                                "betano_browser_closed",
-                                "Navegador/contexto da Betano foi fechado durante a abertura.",
+                            raise ProviderBError(
+                                "odds_provider_b_browser_closed",
+                                "Navegador/contexto do Provedor B foi fechado durante a abertura.",
                             ) from exc
                         continue
 
                 if not opened:
-                    raise BetanoScraperError(
-                        "betano_challenge_blocked",
-                        "Nao foi possivel abrir a Betano (timeout/bloqueio).",
+                    raise ProviderBError(
+                        "odds_provider_b_challenge_blocked",
+                        "Nao foi possivel abrir o Provedor B (timeout/bloqueio).",
                     )
 
                 self._human_pause(page)
@@ -228,7 +228,7 @@ class BetanoStealthScraper:
                     except Exception:
                         odds_links = 0
                     print(
-                        "[BETANO DEBUG] "
+                        "[PROVIDER B DEBUG] "
                         f"final_url={page.url} payloads={len(captured_payloads)} odds_links={odds_links} opened_match={opened_match}"
                     )
 
@@ -257,7 +257,7 @@ class BetanoStealthScraper:
                 entries = self._dedup_entries([*payload_entries, *dom_entries])
                 if self.config.debug:
                     print(
-                        "[BETANO DEBUG] "
+                        "[PROVIDER B DEBUG] "
                         f"payload_entries={len(payload_entries)} dom_entries={len(dom_entries)} merged_entries={len(entries)} snapshots={len(tab_snapshots)}"
                     )
 
@@ -269,31 +269,31 @@ class BetanoStealthScraper:
                 if entries:
                     return entries
                 if not_found:
-                    raise BetanoScraperError(
-                        "betano_match_not_found",
-                        f"Betano retornou pagina sem competicao valida ({page_url}).",
+                    raise ProviderBError(
+                        "odds_provider_b_match_not_found",
+                        f"Provedor B retornou pagina sem competicao valida ({page_url}).",
                     )
                 if challenge:
-                    raise BetanoScraperError(
-                        "betano_challenge_blocked",
-                        "Betano retornou challenge anti-bot durante a coleta.",
+                    raise ProviderBError(
+                        "odds_provider_b_challenge_blocked",
+                        "Provedor B retornou challenge anti-bot durante a coleta.",
                     )
                 if not matched_event and not opened_match:
-                    raise BetanoScraperError(
-                        "betano_match_not_found",
-                        f"Confronto {team1} vs {team2} nao encontrado na Betano.",
+                    raise ProviderBError(
+                        "odds_provider_b_match_not_found",
+                        f"Confronto {team1} vs {team2} nao encontrado no Provedor B.",
                     )
-                raise BetanoScraperError(
-                    "betano_markets_not_found",
+                raise ProviderBError(
+                    "odds_provider_b_markets_not_found",
                     "Confronto encontrado, mas mercados/odds nao foram extraidos.",
                 )
-            except BetanoScraperError:
+            except ProviderBError:
                 raise
             except Exception as exc:
                 if self._is_closed_error(exc):
-                    raise BetanoScraperError(
-                        "betano_browser_closed",
-                        "Navegador/contexto da Betano foi fechado durante a coleta.",
+                    raise ProviderBError(
+                        "odds_provider_b_browser_closed",
+                        "Navegador/contexto do Provedor B foi fechado durante a coleta.",
                     ) from exc
                 raise
             finally:
@@ -396,7 +396,7 @@ class BetanoStealthScraper:
             return False
 
     def _open_master_competition(self, page: Any) -> None:
-        for url in self.BETANO_MASTER_URLS:
+        for url in self.PROVIDER_B_MASTER_URLS:
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=self.config.timeout_ms)
                 page.wait_for_timeout(1000)
@@ -465,7 +465,7 @@ class BetanoStealthScraper:
                     self._sweep_tab_content(page, passes=8)
                 self._append_snapshot(page, snapshots, seen_hashes)
                 if self.config.debug:
-                    print(f"[BETANO DEBUG] tab_url={url}")
+                    print(f"[PROVIDER B DEBUG] tab_url={url}")
             except Exception:
                 continue
 
@@ -514,7 +514,7 @@ class BetanoStealthScraper:
                     break
             if not opened:
                 if self.config.debug:
-                    print(f"[BETANO DEBUG] tab_open_failed labels={labels}")
+                    print(f"[PROVIDER B DEBUG] tab_open_failed labels={labels}")
                 continue
             self._ensure_match_url(page, match_url)
             self._sweep_tab_content(page)
@@ -532,7 +532,7 @@ class BetanoStealthScraper:
             page.goto(match_url, wait_until="domcontentloaded", timeout=self.config.timeout_ms)
             page.wait_for_timeout(900)
             if self.config.debug:
-                print(f"[BETANO DEBUG] restored_match_url={match_url}")
+                print(f"[PROVIDER B DEBUG] restored_match_url={match_url}")
         except Exception:
             return
 
@@ -611,7 +611,7 @@ class BetanoStealthScraper:
             except Exception:
                 break
         if self.config.debug:
-            print(f"[BETANO DEBUG] section_open_failed label={label}")
+            print(f"[PROVIDER B DEBUG] section_open_failed label={label}")
         return False
 
     def _click_market_controls(self, page: Any) -> None:
@@ -718,7 +718,7 @@ class BetanoStealthScraper:
                 pass
             if self.config.debug:
                 active = self._active_tab_label(page) or "unknown"
-                print(f"[BETANO DEBUG] tab_active={active} snapshots={len(snapshots)} html_len={len(html)}")
+                print(f"[PROVIDER B DEBUG] tab_active={active} snapshots={len(snapshots)} html_len={len(html)}")
         except Exception:
             return
 
@@ -982,7 +982,7 @@ class BetanoStealthScraper:
                 parsed = self._parse_markets_from_node(node, team1=team1, team2=team2)
                 if parsed:
                     if self.config.debug:
-                        print(f"[BETANO DEBUG] payload match from {url} -> {len(parsed)} entries")
+                        print(f"[PROVIDER B DEBUG] payload match from {url} -> {len(parsed)} entries")
                     entries.extend(parsed)
 
             if known_match_page:
@@ -992,7 +992,7 @@ class BetanoStealthScraper:
                     if parsed_any:
                         matched_event = True
                         if self.config.debug:
-                            print(f"[BETANO DEBUG] known-match payload parse from {url} -> {len(parsed_any)} entries")
+                            print(f"[PROVIDER B DEBUG] known-match payload parse from {url} -> {len(parsed_any)} entries")
                         entries.extend(parsed_any)
 
         if entries:
@@ -1091,7 +1091,7 @@ class BetanoStealthScraper:
 
                 parsed.append(
                     {
-                        "bookmaker": "betano",
+                        "bookmaker": "odds_provider_b",
                         "market_type": market_type,
                         "selection": normalized_selection,
                         "odds_value": odds_value,
@@ -1529,7 +1529,7 @@ class BetanoStealthScraper:
                 finalized_market_type = self._finalize_market_type(market_type, selection, self._to_float(selection))
                 block_entries.append(
                     {
-                        "bookmaker": "betano",
+                        "bookmaker": "odds_provider_b",
                         "market_type": finalized_market_type or market_type,
                         "selection": selection,
                         "odds_value": odd,
@@ -1636,7 +1636,7 @@ class BetanoStealthScraper:
                 finalized_market_type = self._finalize_market_type(market_type, selection, self._to_float(selection))
                 row_entries.append(
                     {
-                        "bookmaker": "betano",
+                        "bookmaker": "odds_provider_b",
                         "market_type": finalized_market_type or market_type,
                         "selection": selection,
                         "odds_value": odd,
@@ -1703,7 +1703,7 @@ class BetanoStealthScraper:
             for selection, odd in found.items():
                 entries.append(
                     {
-                        "bookmaker": "betano",
+                        "bookmaker": "odds_provider_b",
                         "market_type": f"map{map_number}_ot",
                         "selection": selection,
                         "odds_value": odd,
@@ -1735,7 +1735,7 @@ class BetanoStealthScraper:
                 if odd > 1.0:
                     entries.append(
                         {
-                            "bookmaker": "betano",
+                            "bookmaker": "odds_provider_b",
                             "market_type": "total_maps_parity",
                             "selection": "Ímpar",
                             "odds_value": odd,
@@ -1747,7 +1747,7 @@ class BetanoStealthScraper:
                 if even > 1.0:
                     entries.append(
                         {
-                            "bookmaker": "betano",
+                            "bookmaker": "odds_provider_b",
                             "market_type": "total_maps_parity",
                             "selection": "Par",
                             "odds_value": even,
@@ -1907,30 +1907,30 @@ class BetanoStealthScraper:
         return False
 
 
-def scrape_betano_detailed(
+def scrape_provider_b_detailed(
     team1: str,
     team2: str,
     team1_tag: str | None = None,
     team2_tag: str | None = None,
 ) -> dict[str, Any]:
-    scraper = BetanoStealthScraper()
+    scraper = ProviderBScraper()
     try:
         entries = scraper.scrape_match_odds(team1, team2, team1_tag=team1_tag, team2_tag=team2_tag)
         return {
             "entries": entries,
-            "source": "betano_scraping",
+            "source": "odds_provider_b_scraping",
             "error": None,
             "error_code": None,
         }
-    except BetanoScraperError as exc:
+    except ProviderBError as exc:
         return {
             "entries": [],
-            "source": "betano_scraping",
+            "source": "odds_provider_b_scraping",
             "error": str(exc),
             "error_code": exc.code,
         }
 
 
-def scrape_betano(team1: str, team2: str) -> list[dict[str, Any]]:
-    result = scrape_betano_detailed(team1, team2)
+def scrape_provider_b(team1: str, team2: str) -> list[dict[str, Any]]:
+    result = scrape_provider_b_detailed(team1, team2)
     return list(result.get("entries") or [])
