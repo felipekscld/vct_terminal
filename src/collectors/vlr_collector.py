@@ -161,10 +161,14 @@ def sync_series_detail(match_id: int) -> bool:
         return False
 
     t1, t2 = info.team1, info.team2
+    # series.info()'s team1/team2 tags are unreliable (vlrdevapi sometimes swaps them
+    # on certain match pages) — team.info() is the authoritative per-team source.
+    t1.tag, t1_country = _get_canonical_team_info(t1.id, fallback_tag=t1.tag)
+    t2.tag, t2_country = _get_canonical_team_info(t2.id, fallback_tag=t2.tag)
 
     with get_db() as conn:
-        _upsert_team(conn, t1.id, t1.name, tag=t1.tag or None)
-        _upsert_team(conn, t2.id, t2.name, tag=t2.tag or None)
+        _upsert_team(conn, t1.id, t1.name, tag=t1.tag or None, country=t1_country)
+        _upsert_team(conn, t2.id, t2.name, tag=t2.tag or None, country=t2_country)
 
         date_str = str(info.datetime.date()) if info.datetime else None
         time_str = str(info.datetime.time()) if info.datetime else None
@@ -196,6 +200,26 @@ def sync_series_detail(match_id: int) -> bool:
     except Exception:
         pass
     return True
+
+
+_team_info_cache: dict[int, tuple[str | None, str | None]] = {}
+
+
+def _get_canonical_team_info(team_id: int | None, fallback_tag: str | None = None) -> tuple[str | None, str | None]:
+    """Fetch a team's authoritative tag/country via team.info(), cached per sync run.
+
+    series.info()'s embedded team1/team2 tag is unreliable (vlrdevapi sometimes swaps
+    team1's and team2's tags on certain match pages) — team.info() is not affected.
+    """
+    if not team_id:
+        return fallback_tag or None, None
+    if team_id not in _team_info_cache:
+        try:
+            info = vlr.team.info(team_id=team_id)
+            _team_info_cache[team_id] = (info.tag or None, info.country or None)
+        except Exception:
+            _team_info_cache[team_id] = (fallback_tag or None, None)
+    return _team_info_cache[team_id]
 
 
 def _upsert_team(conn, team_id: int | None, name: str, tag: str | None = None,
