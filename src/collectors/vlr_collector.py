@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-from contextlib import contextmanager
-from datetime import datetime
 from typing import Optional
 
 import vlrdevapi as vlr
@@ -14,38 +12,19 @@ from src.db.connection import get_db
 
 console = Console()
 
-VLR_REGION_ALL = "all"
+
+def _format_prize(prize) -> str | None:
+    """Format an EventPrize into a display string, or None if TBD."""
+    if prize is None or prize.amount is None:
+        return None
+    symbol = prize.currency_symbol or ""
+    return f"{symbol}{prize.amount}"
 
 
-@contextmanager
-def _fetch_events_with_region_all():
-    """Force region=all on events listing so we get Americas, EMEA, Pacific, China.
-    Patches both the fetcher and list_events module so all code paths get the param."""
-    from importlib import import_module
-    fetcher_mod = import_module("vlrdevapi.fetcher")
-    list_events_mod = import_module("vlrdevapi.events.list_events")
-    orig_fetcher = fetcher_mod.fetch_html
-    orig_list_events = list_events_mod.fetch_html
-
-    def _patched_fetch(url: str, *args, **kwargs):
-        if "/events" in url and "region=" not in url:
-            url = url + ("&" if "?" in url else "?") + f"region={VLR_REGION_ALL}"
-        return orig_fetcher(url, *args, **kwargs)
-
-    fetcher_mod.clear_cache()
-    fetcher_mod.fetch_html = _patched_fetch
-    list_events_mod.fetch_html = _patched_fetch
-    try:
-        yield
-    finally:
-        fetcher_mod.fetch_html = orig_fetcher
-        list_events_mod.fetch_html = orig_list_events
-
-
-def sync_events(tier: str = "vct", status: str | None = None, limit_per_status: int = 30) -> list[int]:
+def sync_events(tier: str = "vct", status: str | None = None, max_pages: int = 3) -> list[int]:
     """Sync VCT events into the database. Returns list of event IDs.
 
-    Fetches with region=all so we get Americas, EMEA, Pacific and China (not just one region).
+    vlrdevapi already fetches region='all' by default (Americas, EMEA, Pacific, China).
     If status is None, fetches only 'ongoing' and 'upcoming' (fast, for current/future events).
     Pass status='all' to include 'completed' (past events). Pass 'ongoing'/'upcoming'/'completed' to limit to one.
     """
@@ -55,17 +34,17 @@ def sync_events(tier: str = "vct", status: str | None = None, limit_per_status: 
         statuses_to_fetch = [status]
     else:
         statuses_to_fetch = ["ongoing", "upcoming"]
+
     all_events: list = []
     seen_ids: set[int] = set()
 
-    with _fetch_events_with_region_all():
-        for st in statuses_to_fetch:
-            console.print(f"[cyan]Buscando eventos {tier} status={st} (todas as regiões)...[/cyan]")
-            events = vlr.events.list_events(tier=tier, status=st, limit=limit_per_status)
-            for ev in events:
-                if ev.id not in seen_ids:
-                    seen_ids.add(ev.id)
-                    all_events.append(ev)
+    for st in statuses_to_fetch:
+        console.print(f"[cyan]Buscando eventos {tier} status={st} (todas as regiões)...[/cyan]")
+        result = vlr.event.list(tier=tier, status=st, page=1, max_page=max_pages)
+        for ev in result.events:
+            if ev.id not in seen_ids:
+                seen_ids.add(ev.id)
+                all_events.append(ev)
 
     if not all_events:
         console.print("[yellow]Nenhum evento encontrado.[/yellow]")
@@ -78,8 +57,8 @@ def sync_events(tier: str = "vct", status: str | None = None, limit_per_status: 
                 """INSERT OR REPLACE INTO events
                    (id, name, region, tier, status, prize, start_date, end_date, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))""",
-                (ev.id, ev.name, getattr(ev, "region", None), tier,
-                 getattr(ev, "status", None), getattr(ev, "prize", None),
+                (ev.id, ev.name, ev.region or None, tier,
+                 ev.status, _format_prize(ev.prize),
                  str(ev.start_date) if ev.start_date else None,
                  str(ev.end_date) if ev.end_date else None),
             )
@@ -95,23 +74,31 @@ def sync_events(tier: str = "vct", status: str | None = None, limit_per_status: 
 def sync_stages(event_id: int) -> list[str]:
     """Sync stages for an event. Returns list of stage names."""
     console.print(f"[cyan]Fetching stages for event {event_id}...[/cyan]")
-    stages = vlr.events.stages(event_id)
-    if not stages:
+    result = vlr.event.stages(event_id)
+    if not result.stages:
         console.print("[yellow]No stages found.[/yellow]")
         return []
 
     stage_names = []
     with get_db() as conn:
-        for s in stages:
-            name = s if isinstance(s, str) else getattr(s, "name", str(s))
+        for s in result.stages:
             conn.execute(
                 "INSERT OR IGNORE INTO stages (event_id, name) VALUES (?, ?)",
-                (event_id, name),
+                (event_id, s.name),
             )
-            stage_names.append(name)
-            console.print(f"  [green]Stage:[/green] {name}")
+            stage_names.append(s.name)
+            console.print(f"  [green]Stage:[/green] {s.name}")
 
     return stage_names
+
+
+def _resolve_stage_id(event_id: int, stage_name: str) -> str | None:
+    """Look up a stage's vlr.gg stage_id by its display name."""
+    result = vlr.event.stages(event_id)
+    for s in result.stages:
+        if s.name.lower() == stage_name.lower():
+            return s.id
+    return None
 
 
 def sync_matches(event_id: int, stage: str | None = None) -> list[int]:
@@ -119,28 +106,26 @@ def sync_matches(event_id: int, stage: str | None = None) -> list[int]:
     label = f"event {event_id}" + (f" stage '{stage}'" if stage else "")
     console.print(f"[cyan]Fetching matches for {label}...[/cyan]")
 
-    matches = vlr.events.matches(event_id, stage=stage)
-    if not matches:
+    stage_id = _resolve_stage_id(event_id, stage) if stage else None
+    result = vlr.event.matches(event_id, stage_id=stage_id, state="all")
+    if not result.matches:
         console.print("[yellow]No matches found.[/yellow]")
         return []
 
     match_ids = []
     with get_db() as conn:
-        for m in matches:
+        for m in result.matches:
             t1 = m.teams[0] if m.teams else None
             t2 = m.teams[1] if m.teams and len(m.teams) > 1 else None
 
             if t1 and t1.id:
-                _upsert_team(conn, t1)
+                _upsert_team(conn, t1.id, t1.name)
             if t2 and t2.id:
-                _upsert_team(conn, t2)
+                _upsert_team(conn, t2.id, t2.name)
 
-            date_str = str(m.date) if m.date else None
-            time_str = getattr(m, "time", None)
-            status_val = getattr(m, "status", None) or "upcoming"
-            no_scores = (t1.score if t1 else None) is None and (t2.score if t2 else None) is None
-            if no_scores or date_str is None or (date_str and str(date_str).upper() in ("TBD", "TBA")):
-                status_val = "upcoming"
+            date_str = str(m.match_date) if m.match_date else None
+            time_str = str(m.match_time) if m.match_time else None
+            status_val = m.status.value if hasattr(m.status, "value") else str(m.status)
 
             conn.execute(
                 """INSERT OR REPLACE INTO matches
@@ -149,9 +134,9 @@ def sync_matches(event_id: int, stage: str | None = None) -> list[int]:
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))""",
                 (
                     m.match_id, event_id,
-                    getattr(m, "stage", stage),
-                    getattr(m, "phase", None),
-                    date_str, str(time_str) if time_str else None,
+                    m.stage or stage or None,
+                    m.phase or None,
+                    date_str, time_str,
                     t1.id if t1 else None,
                     t2.id if t2 else None,
                     t1.score if t1 else None,
@@ -166,53 +151,42 @@ def sync_matches(event_id: int, stage: str | None = None) -> list[int]:
 
 
 def sync_series_detail(match_id: int) -> bool:
-    """Deep sync a single match: picks/bans, per-map stats, rounds, compositions.
+    """Deep sync a single match: veto, per-map stats, rounds, compositions.
     Returns True if successful."""
     console.print(f"[cyan]Deep syncing match {match_id}...[/cyan]")
 
-    info = vlr.series.info(match_id=match_id)
-    if not info:
+    info = vlr.series.info(match_id)
+    if not info or not info.team1.id or not info.team2.id:
         console.print(f"[yellow]No series info for match {match_id}.[/yellow]")
         return False
 
-    with get_db() as conn:
-        t1 = info.teams[0]
-        t2 = info.teams[1]
-        if t1.id:
-            _upsert_team(conn, t1)
-        if t2.id:
-            _upsert_team(conn, t2)
+    t1, t2 = info.team1, info.team2
 
-        date_str = str(info.date) if info.date else None
-        time_str = str(info.time) if info.time else None
+    with get_db() as conn:
+        _upsert_team(conn, t1.id, t1.name, tag=t1.tag or None)
+        _upsert_team(conn, t2.id, t2.name, tag=t2.tag or None)
+
+        date_str = str(info.datetime.date()) if info.datetime else None
+        time_str = str(info.datetime.time()) if info.datetime else None
 
         conn.execute(
             """UPDATE matches SET
-                bo_type = ?, patch = ?, date = COALESCE(?, date),
-                time = COALESCE(?, time), updated_at = datetime('now')
+                bo_type = COALESCE(?, bo_type), patch = COALESCE(?, patch),
+                date = COALESCE(?, date), time = COALESCE(?, time),
+                status = COALESCE(?, status), updated_at = datetime('now')
                WHERE id = ?""",
-            (info.best_of, info.patch, date_str, time_str, match_id),
+            (f"bo{info.best_of}" if info.best_of else None, info.patch or None,
+             date_str, time_str, info.status or None, match_id),
         )
 
-        _sync_picks_bans(conn, match_id, info, t1, t2)
-
-        map_data_list = vlr.series.matches(series_id=match_id)
-        if not map_data_list:
-            console.print(f"[yellow]No map data for match {match_id}.[/yellow]")
-            return True
-
-        pick_map = _build_pick_map(info)
+        _sync_veto(conn, match_id, info, t1, t2)
 
         real_map_order = 0
-        for map_data in map_data_list:
-            if map_data.map_name and map_data.map_name.lower() == "all":
+        for game in info.games:
+            if not game.played:
                 continue
             real_map_order += 1
-
-            _sync_single_map(
-                conn, match_id, map_data, real_map_order,
-                t1, t2, pick_map,
-            )
+            _sync_single_map(conn, match_id, game, real_map_order, t1, t2)
 
     console.print(f"  [green]Deep sync complete for match {match_id}.[/green]")
     try:
@@ -224,15 +198,11 @@ def sync_series_detail(match_id: int) -> bool:
     return True
 
 
-def _upsert_team(conn, team_obj) -> None:
+def _upsert_team(conn, team_id: int | None, name: str, tag: str | None = None,
+                  country: str | None = None, country_code: str | None = None) -> None:
     """Insert or update a team record."""
-    tid = getattr(team_obj, "id", None) or getattr(team_obj, "team_id", None)
-    if not tid:
+    if not team_id:
         return
-    name = getattr(team_obj, "name", "")
-    tag = getattr(team_obj, "short", None) or getattr(team_obj, "tag", None)
-    country = getattr(team_obj, "country", None)
-    cc = getattr(team_obj, "country_code", None)
     conn.execute(
         """INSERT INTO teams (id, name, tag, country, country_code, updated_at)
            VALUES (?, ?, ?, ?, ?, datetime('now'))
@@ -242,82 +212,48 @@ def _upsert_team(conn, team_obj) -> None:
              country=COALESCE(excluded.country, teams.country),
              country_code=COALESCE(excluded.country_code, teams.country_code),
              updated_at=datetime('now')""",
-        (tid, name, tag, country, cc),
+        (team_id, name or "", tag, country, country_code),
     )
 
 
-def _sync_picks_bans(conn, match_id: int, info, t1, t2) -> None:
+def _sync_veto(conn, match_id: int, info, t1, t2) -> None:
     """Sync veto (picks/bans) from series.info() into pending_vetos (source='vlr')."""
     conn.execute(
         "DELETE FROM pending_vetos WHERE match_id = ? AND source = 'vlr'",
         (match_id,),
     )
-
-    all_actions = info.map_actions if info.map_actions else []
-    pick_order = 0
-    for action_obj in all_actions:
-        pick_order += 1
-        team_name = action_obj.team
-        team_id = _resolve_team_id(team_name, t1, t2)
+    for pick_order, v in enumerate(info.veto or [], start=1):
+        team_id = _resolve_team_id(v.team, t1, t2) if v.team else None
         conn.execute(
             """INSERT OR REPLACE INTO pending_vetos
                (match_id, source, map_order, action, team_id, team_name, map_name)
                VALUES (?, 'vlr', ?, ?, ?, ?, ?)""",
-            (match_id, pick_order, action_obj.action, team_id, team_name, action_obj.map),
-        )
-
-    if info.remaining:
-        pick_order += 1
-        conn.execute(
-            """INSERT OR REPLACE INTO pending_vetos
-               (match_id, source, map_order, action, team_name, map_name)
-               VALUES (?, 'vlr', ?, 'decider', NULL, ?)""",
-            (match_id, pick_order, info.remaining),
+            (match_id, pick_order, v.veto_type, team_id, v.team or None, v.map_name),
         )
 
 
-def _resolve_team_id(team_name: str, t1, t2) -> Optional[int]:
-    """Try to match a team name from veto to one of the two teams."""
-    if not team_name:
+def _resolve_team_id(label: str | None, t1, t2) -> Optional[int]:
+    """Match a team tag/name (e.g. from veto or map pick) to one of the two series teams."""
+    if not label:
         return None
-    tn = team_name.lower().strip()
+    lbl = label.lower().strip()
     for t in (t1, t2):
-        t_name = (t.name or "").lower().strip()
-        t_short = (t.short or "").lower().strip()
-        if t_name and (t_name in tn or tn in t_name):
+        tag = (t.tag or "").lower().strip()
+        name = (t.name or "").lower().strip()
+        if tag and (tag == lbl or tag in lbl or lbl in tag):
             return t.id
-        if t_short and (t_short in tn or tn in t_short):
+        if name and (name in lbl or lbl in name):
             return t.id
     return None
 
 
-def _build_pick_map(info) -> dict[str, int | None]:
-    """Build a dict of map_name -> picking_team_id from picks."""
-    result: dict[str, int | None] = {}
-    t1, t2 = info.teams
-    for p in (info.picks or []):
-        tid = _resolve_team_id(p.team, t1, t2)
-        result[p.map.lower()] = tid
-    return result
-
-
-def _sync_single_map(conn, match_id: int, map_data, map_order: int, t1, t2, pick_map: dict) -> None:
+def _sync_single_map(conn, match_id: int, game, map_order: int, t1, t2) -> None:
     """Sync a single map's data (scores, rounds, compositions, player stats)."""
-    map_name = map_data.map_name
-    game_id = str(map_data.game_id) if map_data.game_id else None
+    map_name = game.map_name
+    game_id = str(game.game_id) if game.game_id else None
 
-    mt1, mt2 = (None, None)
-    if map_data.teams:
-        mt1, mt2 = map_data.teams
-
-    team1_id = mt1.id if mt1 and mt1.id else (t1.id if t1 else None)
-    team2_id = mt2.id if mt2 and mt2.id else (t2.id if t2 else None)
-    team1_score = mt1.score if mt1 else None
-    team2_score = mt2.score if mt2 else None
-    t1_atk = mt1.attacker_rounds if mt1 else None
-    t1_def = mt1.defender_rounds if mt1 else None
-    t2_atk = mt2.attacker_rounds if mt2 else None
-    t2_def = mt2.defender_rounds if mt2 else None
+    team1_id, team2_id = t1.id, t2.id
+    team1_score, team2_score = game.team1_score, game.team2_score
 
     is_ot = 0
     if team1_score is not None and team2_score is not None:
@@ -328,20 +264,23 @@ def _sync_single_map(conn, match_id: int, map_data, map_order: int, t1, t2, pick
         round_diff = team1_score - team2_score
 
     winner_id = None
-    if mt1 and mt1.is_winner:
-        winner_id = team1_id
-    elif mt2 and mt2.is_winner:
-        winner_id = team2_id
+    if team1_score is not None and team2_score is not None:
+        if team1_score > team2_score:
+            winner_id = team1_id
+        elif team2_score > team1_score:
+            winner_id = team2_id
 
-    pick_team_id = pick_map.get((map_name or "").lower())
+    pick_team_id = _resolve_team_id(game.picked_by, t1, t2) if game.picked_by else None
 
-    rounds = map_data.rounds or []
+    rounds: list = []
+    try:
+        rounds_data = vlr.series.rounds(match_id, game.game_id)
+        rounds = rounds_data.rounds or []
+    except Exception as e:
+        console.print(f"  [yellow]No round data for map {map_name} ({game.game_id}): {e}[/yellow]")
+
     t1_start_side = None
-    t1_pistols = 0
-    t2_pistols = 0
-    t1_conversions = 0
-    t2_conversions = 0
-
+    t1_pistols = t2_pistols = t1_conversions = t2_conversions = 0
     if rounds:
         pistol_info = _derive_pistol_and_sides(rounds, team1_id, team2_id)
         t1_start_side = pistol_info["t1_start_side"]
@@ -375,7 +314,8 @@ def _sync_single_map(conn, match_id: int, map_data, map_order: int, t1, t2, pick
         (
             match_id, game_id, map_name, map_order, pick_team_id,
             team1_id, team2_id, team1_score, team2_score,
-            t1_atk, t1_def, t2_atk, t2_def,
+            game.team1_attack_rounds, game.team1_defense_rounds,
+            game.team2_attack_rounds, game.team2_defense_rounds,
             t1_start_side, t1_pistols, t2_pistols,
             t1_conversions, t2_conversions,
             is_ot, round_diff, winner_id,
@@ -400,12 +340,22 @@ def _sync_single_map(conn, match_id: int, map_data, map_order: int, t1, t2, pick
         return
     map_id = row["id"]
 
-    _sync_rounds(conn, map_id, rounds)
+    _sync_rounds(conn, map_id, rounds, t1, t2)
+    _sync_players_and_comps(conn, map_id, match_id, game.game_id, team1_id, team2_id)
 
-    mt1_short = mt1.short if mt1 else (t1.short if hasattr(t1, 'short') else None)
-    mt2_short = mt2.short if mt2 else (t2.short if hasattr(t2, 'short') else None)
-    _sync_players_and_comps(conn, map_id, map_data.players, team1_id, team2_id,
-                            mt1_short=mt1_short, mt2_short=mt2_short)
+
+def _normalize_side(side: str | None) -> str | None:
+    """Map vlrdevapi's raw side label ('Attack'/'Defense') to the app's vocabulary
+    ('Attacker'/'Defender'), which downstream code (e.g. probability.py's exact
+    'attacker'/'atk' check) expects."""
+    if not side:
+        return None
+    s = side.lower()
+    if s.startswith("attack"):
+        return "Attacker"
+    if s.startswith("defen"):
+        return "Defender"
+    return side
 
 
 def _derive_pistol_and_sides(rounds: list, team1_id: int | None, team2_id: int | None) -> dict:
@@ -418,20 +368,21 @@ def _derive_pistol_and_sides(rounds: list, team1_id: int | None, team2_id: int |
         "t2_conversions": 0,
     }
 
-    round_map = {r.number: r for r in rounds}
+    round_map = {r.round_number: r for r in rounds}
 
     r1 = round_map.get(1)
     if r1:
         if r1.winner_team_id == team1_id:
-            result["t1_start_side"] = r1.winner_side
+            result["t1_start_side"] = _normalize_side(r1.side)
             result["t1_pistols"] += 1
             r2 = round_map.get(2)
             if r2 and r2.winner_team_id == team1_id:
                 result["t1_conversions"] += 1
         elif r1.winner_team_id == team2_id:
-            if r1.winner_side == "Attacker":
+            side = (r1.side or "").lower()
+            if side.startswith("attack"):
                 result["t1_start_side"] = "Defender"
-            elif r1.winner_side == "Defender":
+            elif side.startswith("defen"):
                 result["t1_start_side"] = "Attacker"
             result["t2_pistols"] += 1
             r2 = round_map.get(2)
@@ -454,61 +405,60 @@ def _derive_pistol_and_sides(rounds: list, team1_id: int | None, team2_id: int |
     return result
 
 
-def _sync_rounds(conn, map_id: int, rounds: list) -> None:
+def _sync_rounds(conn, map_id: int, rounds: list, t1, t2) -> None:
     """Insert round-by-round data."""
     conn.execute("DELETE FROM rounds WHERE map_id = ?", (map_id,))
     for r in rounds:
-        score = r.score if r.score else (None, None)
+        winner_short = None
+        if r.winner_team_id == t1.id:
+            winner_short = t1.tag
+        elif r.winner_team_id == t2.id:
+            winner_short = t2.tag
         conn.execute(
             """INSERT OR REPLACE INTO rounds
                (map_id, round_number, winner_team_id, winner_team_short,
                 winner_side, method, score_t1, score_t2)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                map_id, r.number, r.winner_team_id,
-                r.winner_team_short, r.winner_side, r.method,
-                score[0] if score else None,
-                score[1] if score else None,
+                map_id, r.round_number, r.winner_team_id or None,
+                winner_short, _normalize_side(r.side), r.win_type,
+                r.team1_score, r.team2_score,
             ),
         )
 
 
-def _sync_players_and_comps(conn, map_id: int, players: list, team1_id, team2_id,
-                            mt1_short: str | None = None, mt2_short: str | None = None) -> None:
+def _sync_players_and_comps(conn, map_id: int, match_id: int, game_id, team1_id, team2_id) -> None:
     """Sync player stats and derive team compositions."""
     conn.execute("DELETE FROM player_map_stats WHERE map_id = ?", (map_id,))
     conn.execute("DELETE FROM map_compositions WHERE map_id = ?", (map_id,))
 
-    short_to_id: dict[str, int] = {}
-    if mt1_short and team1_id:
-        short_to_id[mt1_short.upper()] = team1_id
-    if mt2_short and team2_id:
-        short_to_id[mt2_short.upper()] = team2_id
+    try:
+        stats = vlr.series.players(match_id, game_id)
+    except Exception as e:
+        console.print(f"  [yellow]No player stats for game {game_id}: {e}[/yellow]")
+        return
 
     team_agents: dict[int, list[str]] = {}
 
-    for p in players:
-        agent = p.agents[0] if p.agents else None
-        player_team_id = p.team_id
-
-        if not player_team_id and p.team_short:
-            player_team_id = short_to_id.get(p.team_short.upper())
-
-        conn.execute(
-            """INSERT OR REPLACE INTO player_map_stats
-               (map_id, player_id, player_name, team_id, agent,
-                rating, acs, kills, deaths, assists, kd_diff,
-                kast, adr, hs_pct, fk, fd, fk_diff)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                map_id, p.player_id, p.name, player_team_id, agent,
-                p.r, p.acs, p.k, p.d, p.a, p.kd_diff,
-                p.kast, p.adr, p.hs_pct, p.fk, p.fd, p.fk_diff,
-            ),
-        )
-
-        if player_team_id and agent:
-            team_agents.setdefault(player_team_id, []).append(agent)
+    for team_players, fallback_team_id in ((stats.team1, team1_id), (stats.team2, team2_id)):
+        tid = team_players.team_id or fallback_team_id
+        for p in team_players.players:
+            agent = p.agents[0] if p.agents else None
+            o = p.stats.overall
+            conn.execute(
+                """INSERT OR REPLACE INTO player_map_stats
+                   (map_id, player_id, player_name, team_id, agent,
+                    rating, acs, kills, deaths, assists, kd_diff,
+                    kast, adr, hs_pct, fk, fd, fk_diff)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    map_id, p.player_id, p.name, tid, agent,
+                    o.rating, o.acs, o.kills, o.deaths, o.assists, o.kd_diff,
+                    o.kast, o.adr, o.hs_percent, o.first_kills, o.first_deaths, o.fk_fd_diff,
+                ),
+            )
+            if tid and agent:
+                team_agents.setdefault(tid, []).append(agent)
 
     for tid, agents in team_agents.items():
         sorted_agents = sorted(agents)[:5]
